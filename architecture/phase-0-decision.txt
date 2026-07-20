@@ -1,0 +1,10 @@
+CETECH production architecture approved:
+- Cloudflare Business
+- OVH LB M
+- app-a and app-b
+- dedicated MariaDB 11.8
+- isolated Valkey
+- Nginx FastCGI cache
+- OVH active media
+- Backblaze off-provider backups
+- no Kubernetes/Swarm/Galera initially
