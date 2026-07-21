@@ -1,0 +1,22 @@
+# Default ownership
+* @<GITHUB_ORG>/cetech-platform-maintainers
+
+# Infrastructure and deployments
+/.github/ @<GITHUB_ORG>/cetech-devops @<GITHUB_ORG>/cetech-security
+/docker/ @<GITHUB_ORG>/cetech-devops
+/infrastructure/ @<GITHUB_ORG>/cetech-devops @<GITHUB_ORG>/cetech-security
+/compose*.yml @<GITHUB_ORG>/cetech-devops
+/environments/production/ @<GITHUB_ORG>/cetech-devops @<GITHUB_ORG>/cetech-security
+
+# Database and migration safety
+/scripts/migration/ @<GITHUB_ORG>/cetech-devops @<GITHUB_ORG>/cetech-commerce
+/scripts/backup/ @<GITHUB_ORG>/cetech-devops
+/scripts/restore/ @<GITHUB_ORG>/cetech-devops
+
+# WooCommerce
+/apps/store-gh/ @<GITHUB_ORG>/cetech-commerce
+/dependencies/store-gh-public.lock @<GITHUB_ORG>/cetech-commerce @<GITHUB_ORG>/cetech-security
+
+# Security policy
+/docker/nginx/common/ @<GITHUB_ORG>/cetech-security
+/infrastructure/cloudflare/ @<GITHUB_ORG>/cetech-security

@@ -1,0 +1,9 @@
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/cetech.test.crt
+      keyFile: /etc/traefik/certs/cetech.test.key
+
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true

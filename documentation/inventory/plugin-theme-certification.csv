@@ -1,0 +1,10 @@
+site,type,slug,name,current_version,target_version,source,licence_valid,wp_7_0,php_8_4,woo_10_9,hpos,store_api,checkout_blocks,classic_checkout,object_cache,subdirectory_urls,multi_node,writes_code,background_jobs,external_hosts,status,owner,notes
+corporate,plugin,,,,,,,,,,,,,,,,,,,,pending,,
+store-gh,plugin,woocommerce,WooCommerce,10.9.4,10.9.4,wordpress.org,n/a,pass,pass,pass,pass,pass,review,pass,pass,pass,pass,no,yes,yes,approved,CETECH,
+store-gh,plugin,redis-cache,Redis Object Cache,2.8.0,2.8.0,wordpress.org,n/a,pass,pass,pass,n/a,n/a,n/a,n/a,pass,pass,pass,drop-in,no,no,approved,CETECH,
+store-gh,theme,woodmart,Woodmart,,,,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,CETECH,
+store-gh,plugin,wpml,WPML,,,,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,CETECH,
+store-gh,plugin,wcfm,WCFM,,,,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,CETECH,
+store-gh,plugin,wordfence,Wordfence,,,,pending,pending,pending,pending,n/a,n/a,n/a,n/a,pending,pending,pending,yes,yes,yes,CETECH,
+store-gh,plugin,jetpack,Jetpack,,,,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,pending,yes,yes,yes,CETECH,
+store-gh,plugin,elementor,Elementor,,,,pending,pending,pending,pending,n/a,n/a,n/a,n/a,pending,pending,pending,yes,yes,yes,CETECH,

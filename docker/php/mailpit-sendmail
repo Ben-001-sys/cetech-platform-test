@@ -1,0 +1,8 @@
+#!/bin/sh
+exec /usr/bin/msmtp \
+  --host=mailpit \
+  --port=1025 \
+  --read-envelope-from \
+  --read-recipients
+
+

@@ -1,0 +1,4 @@
+# site|type|slug|version|filename|sha256
+store-gh|theme|woodmart|APPROVED_VERSION|woodmart.zip|REPLACE_SHA256
+store-gh|plugin|sitepress-multilingual-cms|APPROVED_VERSION|sitepress-multilingual-cms.zip|REPLACE_SHA256
+store-gh|plugin|elementor-pro|APPROVED_VERSION|elementor-pro.zip|REPLACE_SHA256
