@@ -52,7 +52,7 @@ jobs:
           jq -e 'length == 3' release-manifest.json
 
       - name: Upload manifest
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: cetech-release-manifest-${{ github.event.workflow_run.head_sha }}
           path: release-manifest.json
