@@ -138,9 +138,11 @@ RUN set -eux; \
       /usr/local/bin/mailpit-sendmail; \
     find /opt/cetech/wp-content -type d -exec chmod 0755 {} +; \
     find /opt/cetech/wp-content -type f -exec chmod 0644 {} +; \
-    chown -R www-data:www-data /opt/cetech/wp-content
+    chown -R www-data:www-data /opt/cetech/wp-content /var/www/html
 
 WORKDIR /var/www/html
+
+USER www-data
 
 EXPOSE 9000
 

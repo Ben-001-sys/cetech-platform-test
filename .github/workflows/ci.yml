@@ -60,7 +60,7 @@ jobs:
           set -Eeuo pipefail
 
           if git grep -nE \
-            'BEGIN (OPENSSH |RSA |EC )?PRIVATE KEY|AKIA[0-9A-Z]{16}|MARIADB_ROOT_PASSWORD=[^C]|AUTH_KEY=.{30,}' \
+            'BEGIN (OPENSSH |RSA |EC )?PRIVATE KEY|AKIA[0-9A-Z]{16}|(MARIADB_ROOT_PASSWORD|AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT|SECURE_AUTH_SALT|LOGGED_IN_SALT|NONCE_SALT)=(?!\$\(|[A-Za-z0-9+/=]{0,31})([A-Za-z0-9+/=]{24,})' \
             -- \
             ':!*.example'
           then
