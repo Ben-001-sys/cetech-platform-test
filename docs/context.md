@@ -121,6 +121,62 @@ Setting `WP_ROOT=/var/www/html` aligns the runtime entrypoint with the actual pa
 
 ## Root causes discovered
 
+## Create Release Manifest jq failure (resolved)
+
+### Workflow and failing step
+
+- Workflow: `Create Release Manifest`
+- Step: `Assemble manifest`
+- Error: `jq: error: downloaded/0 is not defined`, followed by similar errors for `release`, `records`, and the artifact filename components.
+
+### Root cause
+
+The workflow used:
+
+```bash
+find downloaded-release-records -type f -name '*.json' -print0 \
+  | sort -z \
+  | xargs -0 jq -s
+```
+
+`xargs` appends its filenames after the fixed arguments. The resulting command was effectively `jq -s downloaded-release-records/cetech-blog-en-php.json ...`. Because jq requires its filter immediately after its options, jq interpreted the first filename as the filter program instead of an input file.
+
+The JSON release records were not malformed. The earlier artifact-download failure was related: downloading every artifact included non-ZIP Buildx `.dockerbuild` records; restricting downloads to the three named release artifacts fixed that separate failure, after which this jq argument-ordering bug became visible.
+
+### Investigation performed
+
+- Located every executable jq invocation in the repository workflows.
+- Inspected the release-record producer in `.github/workflows/release-images.yml`, which writes one JSON object per site artifact.
+- Confirmed the manifest expects an array of exactly three JSON records using `jq -e 'length == 3'`.
+- Traced `xargs -0 jq -s` argument ordering to identify why artifact paths were parsed as jq expressions.
+
+### Fix and why it works
+
+The workflow now collects the null-delimited JSON paths into a Bash array, verifies that exactly three records were downloaded, and invokes:
+
+```bash
+jq -s '.' "${release_records[@]}"
+```
+
+The explicit `.` is the jq filter and every path is passed as an input file. This preserves the intended slurp behavior and avoids shell word-splitting or jq filter ambiguity.
+
+### Validation and commands executed
+
+- `grep_search` for `jq` invocations across the repository.
+- Inspected `.github/workflows/create-release-manifest.yml` and `.github/workflows/release-images.yml`.
+- Local validation with three representative release-record JSON objects and the same `jq -s '.' "${release_records[@]}"` command is required before rerunning the workflow.
+
+### Lessons learned
+
+- When using `xargs` with jq, always provide the filter explicitly before filenames, or use an argument array.
+- Artifact download fixes can expose later-stage processing failures; validate each workflow stage independently.
+- Keep the manifest cardinality check separate from JSON parsing so missing artifacts fail with an actionable message.
+
+### Commands not to repeat without a code or input change
+
+- Do not repeat the old `xargs -0 jq -s` invocation; its argument ordering deterministically reproduces the same jq filter error.
+- Do not redownload all workflow artifacts; the `.dockerbuild` artifact is not a ZIP and was already identified as the cause of the earlier extraction failure.
+
 - Repository policy mismatch: `.gitignore` re-included `wp-content/uploads/.gitkeep`, which causes Git to track upload placeholder files even though the CI validator forbids tracked uploads. The official Git documentation confirms that `.gitignore` only affects untracked files; this was the reason the already-tracked `uploads/.gitkeep` placeholder files kept failing the validation rule.
 - The `build-and-push` failures are due to Trivy finding Linux kernel CVEs in the image base layers; they are image and upstream package issues.
 - The nginx validation failure is due to using an unresolved service hostname in the nginx config test context.
