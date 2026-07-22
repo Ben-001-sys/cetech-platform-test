@@ -33,8 +33,18 @@ jobs:
 
           mkdir -p downloaded-release-records
 
-          gh run download "${RUN_ID}" \
-            --dir downloaded-release-records
+          artifacts=(
+            "release-cetech-corporate-php-${{ github.event.workflow_run.head_sha }}"
+            "release-cetech-store-gh-php-${{ github.event.workflow_run.head_sha }}"
+            "release-cetech-blog-en-php-${{ github.event.workflow_run.head_sha }}"
+          )
+
+          for artifact in "${artifacts[@]}"; do
+            echo "Downloading artifact: ${artifact}"
+            gh run download "${RUN_ID}" \
+              --dir downloaded-release-records \
+              --name "${artifact}"
+          done
 
       - name: Assemble manifest
         shell: bash
