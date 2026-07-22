@@ -61,24 +61,35 @@ mkdir -p \
 # ==================================================
 # Copy Custom WordPress Content
 # ==================================================
+#
+# The bind-mounted WordPress content tree is already present in local
+# development. Skip the runtime rsync unless the destination tree is
+# still empty so store-specific uploads/plugins/themes don't cause a
+# slow or repeated startup gate before PHP-FPM is ready.
+#
+# ==================================================
 
 if [[ -d /opt/cetech/wp-content ]]; then
-	rsync -a \
-		--ignore-existing \
-		/opt/cetech/wp-content/ \
-		"${WP_ROOT}/wp-content/"
+	if ! find "${WP_ROOT}/wp-content" -mindepth 1 -print -quit | grep -q .; then
+		rsync -a \
+			--ignore-existing \
+			/opt/cetech/wp-content/ \
+			"${WP_ROOT}/wp-content/"
+	fi
 fi
 
 
 # ==================================================
 # Install Public Plugins
 # ==================================================
-
-if [[ -x /usr/local/bin/install-public-plugins ]]; then
-	/usr/local/bin/install-public-plugins \
-		"${CETECH_SITE_ID:-${APP_SLUG:-corporate}}" \
-		"${INSTALL_DEV_TOOLS:-0}"
-fi
+#
+# Public plugin installation is performed during image build so the
+# runtime container can start without re-issuing network-dependent
+# WP-CLI installs on every compose restart. Re-running that step here
+# can keep PHP-FPM from becoming ready and cause the Compose health
+# gate to fail unexpectedly.
+#
+# ==================================================
 
 
 # ==================================================

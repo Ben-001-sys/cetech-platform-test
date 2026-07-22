@@ -22,11 +22,11 @@ wp_store() {
 
 wp_store plugin activate woocommerce
 
-wp_store eval '
-if ( class_exists( "WC_Install" ) ) {
+wp_store eval "
+if ( class_exists( 'WC_Install' ) ) {
 	WC_Install::create_pages();
 }
-'
+"
 
 wp_store option update woocommerce_default_country GH
 wp_store option update woocommerce_currency GHS
@@ -71,24 +71,24 @@ wp_store option update woocommerce_downloads_grant_access_after_payment yes
 wp_store option update woocommerce_downloads_require_login no
 wp_store option update woocommerce_file_download_method xsendfile
 
-wp_store eval '
-$gateways = array(
-	"woocommerce_bacs_settings",
-	"woocommerce_cheque_settings",
-	"woocommerce_cod_settings",
+wp_store eval "
+\$gateways = array(
+	'woocommerce_bacs_settings',
+	'woocommerce_cheque_settings',
+	'woocommerce_cod_settings',
 );
 
-foreach ( $gateways as $option_name ) {
-	$settings = get_option( $option_name, array() );
+foreach ( \$gateways as \$option_name ) {
+	\$settings = get_option( \$option_name, array() );
 
-	if ( ! is_array( $settings ) ) {
-		$settings = array();
+	if ( ! is_array( \$settings ) ) {
+		\$settings = array();
 	}
 
-	$settings["enabled"] = "no";
-	update_option( $option_name, $settings, false );
+	\$settings['enabled'] = 'no';
+	update_option( \$option_name, \$settings, false );
 }
-'
+"
 
 wp_store rewrite flush --hard
 
