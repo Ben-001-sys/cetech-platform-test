@@ -226,6 +226,8 @@ jobs:
             -m \
             > /tmp/php-modules.txt
 
+          missing_modules=()
+
           for module in \
             bcmath \
             exif \
@@ -241,8 +243,17 @@ jobs:
             sockets \
             zip
           do
-            grep -qi "^${module}$" /tmp/php-modules.txt
+            if ! grep -qi "^${module}$" /tmp/php-modules.txt; then
+              missing_modules+=("${module}")
+            fi
           done
+
+          if [[ ${#missing_modules[@]} -gt 0 ]]; then
+            echo "Missing PHP modules in ${image}: ${missing_modules[*]}" >&2
+            echo "Available modules:" >&2
+            cat /tmp/php-modules.txt >&2
+            exit 1
+          fi
 
           docker run --rm \
             --entrypoint wp \
