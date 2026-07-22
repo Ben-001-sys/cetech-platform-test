@@ -61,12 +61,21 @@ mkdir -p \
 # ==================================================
 # Copy Custom WordPress Content
 # ==================================================
+#
+# The bind-mounted WordPress content tree is already present in local
+# development. Skip the runtime rsync unless the destination tree is
+# still empty so store-specific uploads/plugins/themes don't cause a
+# slow or repeated startup gate before PHP-FPM is ready.
+#
+# ==================================================
 
 if [[ -d /opt/cetech/wp-content ]]; then
-	rsync -a \
-		--ignore-existing \
-		/opt/cetech/wp-content/ \
-		"${WP_ROOT}/wp-content/"
+	if ! find "${WP_ROOT}/wp-content" -mindepth 1 -print -quit | grep -q .; then
+		rsync -a \
+			--ignore-existing \
+			/opt/cetech/wp-content/ \
+			"${WP_ROOT}/wp-content/"
+	fi
 fi
 
 

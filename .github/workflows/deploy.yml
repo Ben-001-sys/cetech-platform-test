@@ -1,0 +1,213 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      release_sha:
+        description: Full Git commit SHA whose images must be deployed
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-24.04
+    outputs:
+      release_sha: ${{ steps.validate.outputs.release_sha }}
+
+    steps:
+      - name: Check out requested release
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate full SHA
+        id: validate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          release_sha="${{ inputs.release_sha }}"
+
+          if [[ ! "${release_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "A full 40-character lowercase Git SHA is required." >&2
+            exit 1
+          fi
+
+          actual_sha="$(git rev-parse HEAD)"
+
+          if [[ "${actual_sha}" != "${release_sha}" ]]; then
+            echo "Checked-out SHA does not match input." >&2
+            exit 1
+          fi
+
+          if [[ "${{ inputs.environment }}" == "production" ]]; then
+            if ! git merge-base --is-ancestor \
+              "${release_sha}" \
+              origin/main
+            then
+              echo "Production release is not on main." >&2
+              exit 1
+            fi
+          fi
+
+          echo "release_sha=${release_sha}" \
+            >> "${GITHUB_OUTPUT}"
+
+  deploy:
+    needs:
+      - validate-release
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Read current Dokploy Compose configuration
+        id: current
+        env:
+          DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          response="$(
+            curl \
+              --fail-with-body \
+              --silent \
+              --show-error \
+              --get \
+              --header "x-api-key: ${DOKPLOY_API_KEY}" \
+              --data-urlencode "composeId=${DOKPLOY_COMPOSE_ID}" \
+              "${DOKPLOY_BASE_URL%/}/api/compose.one"
+          )"
+
+          printf '%s' "${response}" > /tmp/dokploy-compose.json
+
+          current_env="$(
+            jq -r '.env // ""' /tmp/dokploy-compose.json
+          )"
+
+          printf '%s' "${current_env}" > /tmp/current.env
+
+      - name: Set immutable release SHA
+        env:
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          path = Path("/tmp/current.env")
+          release_sha = os.environ["RELEASE_SHA"]
+
+          lines = path.read_text().splitlines()
+          output = []
+          found = False
+
+          for line in lines:
+              if line.startswith("RELEASE_SHA="):
+                  output.append(f"RELEASE_SHA={release_sha}")
+                  found = True
+              else:
+                  output.append(line)
+
+          if not found:
+              output.append(f"RELEASE_SHA={release_sha}")
+
+          Path("/tmp/updated.env").write_text(
+              "\n".join(output).rstrip() + "\n"
+          )
+          PY
+
+      - name: Update Dokploy environment
+        env:
+          DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          payload="$(
+            jq -n \
+              --arg composeId "${DOKPLOY_COMPOSE_ID}" \
+              --rawfile env /tmp/updated.env \
+              '{
+                composeId: $composeId,
+                env: $env
+              }'
+          )"
+
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --request POST \
+            --header "x-api-key: ${DOKPLOY_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "${payload}" \
+            "${DOKPLOY_BASE_URL%/}/api/compose.update"
+
+      - name: Trigger Dokploy deployment
+        env:
+          DOKPLOY_BASE_URL: ${{ secrets.DOKPLOY_BASE_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
+          RELEASE_SHA: ${{ needs.validate-release.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          payload="$(
+            jq -n \
+              --arg composeId "${DOKPLOY_COMPOSE_ID}" \
+              --arg title "CETECH ${RELEASE_SHA}" \
+              --arg description \
+                "GitHub Actions deployment to ${{ inputs.environment }}" \
+              '{
+                composeId: $composeId,
+                title: $title,
+                description: $description
+              }'
+          )"
+
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --request POST \
+            --header "x-api-key: ${DOKPLOY_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "${payload}" \
+            "${DOKPLOY_BASE_URL%/}/api/compose.deploy"
+
+      - name: Record requested release
+        shell: bash
+        run: |
+          {
+            echo "### Deployment requested"
+            echo
+            echo "- Environment: ${{ inputs.environment }}"
+            echo "- SHA: ${{ needs.validate-release.outputs.release_sha }}"
+            echo "- Actor: ${{ github.actor }}"
+          } >> "${GITHUB_STEP_SUMMARY}"

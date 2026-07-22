@@ -1,0 +1,154 @@
+name: Release Images
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  PHP_IMAGE: php:8.4.22-fpm-bookworm@sha256:66cf4b823e8dcde762ffa705b8589d592d709e0705ce6fdcd832d9a7ea4ed0f3
+  WP_CLI_IMAGE: wordpress:cli-2.12.0-php8.4
+  WORDPRESS_VERSION: 7.0.2
+  PHPREDIS_VERSION: 6.3.0
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - site: corporate
+            app_dir: apps/corporate
+            image: cetech-corporate-php
+          - site: store-gh
+            app_dir: apps/store-gh
+            image: cetech-store-gh-php
+          - site: blog-en
+            app_dir: apps/blog-en
+            image: cetech-blog-en-php
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set lowercase owner
+        id: owner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "value=${GITHUB_REPOSITORY_OWNER,,}" \
+            >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Determine tags
+        id: tags
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          repository="ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image }}"
+          sha_tag="${repository}:sha-${GITHUB_SHA}"
+
+          {
+            echo "list<<EOF"
+            echo "${sha_tag}"
+
+            if [[ "${GITHUB_REF}" == "refs/heads/staging" ]]; then
+              echo "${repository}:staging"
+            fi
+
+            if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+              echo "${repository}:production-candidate"
+            fi
+
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              echo "${repository}:${GITHUB_REF_NAME}"
+            fi
+
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push immutable image
+        id: build
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: docker/php/Dockerfile
+          push: true
+          pull: true
+          platforms: linux/amd64
+          tags: ${{ steps.tags.outputs.list }}
+          build-args: |
+            PHP_IMAGE=${{ env.PHP_IMAGE }}
+            WP_CLI_IMAGE=${{ env.WP_CLI_IMAGE }}
+            WORDPRESS_VERSION=${{ env.WORDPRESS_VERSION }}
+            PHPREDIS_VERSION=${{ env.PHPREDIS_VERSION }}
+            APP_DIR=${{ matrix.app_dir }}
+            APP_SLUG=${{ matrix.site }}
+            INSTALL_DEV_TOOLS=0
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Scan pushed immutable digest
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Write release record
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          mkdir -p release-records
+
+          cat > "release-records/${{ matrix.image }}.json" <<EOF
+          {
+            "repository": "${GITHUB_REPOSITORY}",
+            "commit": "${GITHUB_SHA}",
+            "ref": "${GITHUB_REF}",
+            "image": "ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image }}",
+            "digest": "${{ steps.build.outputs.digest }}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Upload release record
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-${{ matrix.image }}-${{ github.sha }}
+          path: release-records/${{ matrix.image }}.json
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,320 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - staging
+  push:
+    branches:
+      - main
+      - staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PHP_IMAGE: php:8.4.22-fpm-bookworm@sha256:66cf4b823e8dcde762ffa705b8589d592d709e0705ce6fdcd832d9a7ea4ed0f3
+  WP_CLI_IMAGE: wordpress:cli-2.12.0-php8.4
+  WORDPRESS_VERSION: 7.0.2
+  PHPREDIS_VERSION: 6.3.0
+
+jobs:
+  repository-validation:
+    name: repository-validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate no forbidden files are tracked
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          forbidden="$(
+            git ls-files \
+              | grep -E \
+                '(^|/)\.env$|\.sql(\.gz|\.zst)?$|\.key$|\.p12$|\.pfx$|wp-content/uploads/' \
+              || true
+          )"
+
+          if [[ -n "${forbidden}" ]]; then
+            echo "Forbidden tracked files:"
+            printf '%s\n' "${forbidden}"
+            exit 1
+          fi
+
+      - name: Scan repository for obvious secret material
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if git grep -nE \
+            'BEGIN (OPENSSH |RSA |EC )?PRIVATE KEY|AKIA[0-9A-Z]{16}|MARIADB_ROOT_PASSWORD=[^C]|AUTH_KEY=.{30,}' \
+            -- \
+            ':!*.example'
+          then
+            echo "Potential secret material detected."
+            exit 1
+          fi
+
+      - name: Shell syntax and ShellCheck
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+          find scripts docker \
+            -type f \
+            -name '*.sh' \
+            -print0 \
+            | xargs -0 -r shellcheck
+
+          while IFS= read -r -d '' file; do
+            bash -n "${file}"
+          done < <(
+            find scripts docker \
+              -type f \
+              -name '*.sh' \
+              -print0
+          )
+
+      - name: Install Composer dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          docker run --rm \
+            --volume "${PWD}:/app" \
+            --workdir /app \
+            composer:2.8.10 \
+            composer install \
+              --no-interaction \
+              --prefer-dist \
+              --no-progress
+
+      - name: PHP syntax and coding standards
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          docker run --rm \
+            --volume "${PWD}:/app" \
+            --workdir /app \
+            php:8.4.22-cli-bookworm \
+            sh -c '
+              find apps docker scripts \
+                -type f \
+                -name "*.php" \
+                -print0 \
+                | xargs -0 -n1 php -l
+
+              vendor/bin/phpcs
+            '
+
+      - name: Generate temporary Compose environment
+        id: env
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./scripts/local/generate-ci-env.sh /tmp/cetech-ci.env
+          echo "path=/tmp/cetech-ci.env" >> "${GITHUB_OUTPUT}"
+
+      - name: Validate Docker Compose
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          docker compose \
+            --env-file "${{ steps.env.outputs.path }}" \
+            -f compose.local.yml \
+            config --quiet
+
+          docker compose \
+            --env-file "${{ steps.env.outputs.path }}" \
+            -f compose.local.yml \
+            config \
+            > /tmp/cetech-compose.yml
+
+          if grep -nE \
+            'published: (3306|6379|6380|6381|9000|1025)' \
+            /tmp/cetech-compose.yml
+          then
+            echo "Internal port is publicly published."
+            exit 1
+          fi
+
+  php-build:
+    name: php-build (${{ matrix.site }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    needs:
+      - repository-validation
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - site: corporate
+            app_dir: apps/corporate
+          - site: store-gh
+            app_dir: apps/store-gh
+          - site: blog-en
+            app_dir: apps/blog-en
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build PHP image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          docker build \
+            --file docker/php/Dockerfile \
+            --build-arg PHP_IMAGE="${PHP_IMAGE}" \
+            --build-arg WP_CLI_IMAGE="${WP_CLI_IMAGE}" \
+            --build-arg WORDPRESS_VERSION="${WORDPRESS_VERSION}" \
+            --build-arg PHPREDIS_VERSION="${PHPREDIS_VERSION}" \
+            --build-arg APP_DIR="${{ matrix.app_dir }}" \
+            --build-arg APP_SLUG="${{ matrix.site }}" \
+            --build-arg INSTALL_DEV_TOOLS=0 \
+            --tag "cetech-${{ matrix.site }}-php:ci-${GITHUB_SHA}" \
+            .
+
+      - name: Verify PHP modules and WordPress
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          image="cetech-${{ matrix.site }}-php:ci-${GITHUB_SHA}"
+
+          docker run --rm \
+            --entrypoint php \
+            "${image}" \
+            -m \
+            > /tmp/php-modules.txt
+
+          for module in \
+            bcmath \
+            exif \
+            gd \
+            imagick \
+            intl \
+            mysqli \
+            opcache \
+            pcntl \
+            pdo_mysql \
+            redis \
+            soap \
+            sockets \
+            zip
+          do
+            grep -qi "^${module}$" /tmp/php-modules.txt
+          done
+
+          docker run --rm \
+            --entrypoint wp \
+            "${image}" \
+            core verify-checksums \
+            --path=/usr/src/wordpress \
+            --version="${WORDPRESS_VERSION}"
+
+      - name: Verify production image excludes development tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          image="cetech-${{ matrix.site }}-php:ci-${GITHUB_SHA}"
+
+          if docker run --rm \
+            --entrypoint test \
+            "${image}" \
+            -d /opt/cetech/wp-content/plugins/query-monitor
+          then
+            echo "Query Monitor exists in production image."
+            exit 1
+          fi
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: cetech-${{ matrix.site }}-php:ci-${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  nginx-validation:
+    name: nginx-validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate front-door Nginx
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          docker run --rm \
+            --volume "${PWD}/docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            --volume "${PWD}/docker/nginx/front-door/default.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:1.30.4 \
+            nginx -t
+
+      - name: Validate site Nginx configurations
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          for site in corporate store-gh blog-en; do
+            docker run --rm \
+              --volume "${PWD}/docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+              --volume "${PWD}/docker/nginx/${site}/default.conf:/etc/nginx/conf.d/default.conf:ro" \
+              --volume "${PWD}/docker/nginx/common:/etc/nginx/snippets:ro" \
+              nginx:1.30.4 \
+              nginx -t
+          done
+
+  secret-and-vulnerability-scan:
+    name: secret-and-vulnerability-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
