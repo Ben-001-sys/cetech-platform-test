@@ -145,7 +145,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          ./scripts/local/generate-ci-env.sh /tmp/cetech-ci.env
+          bash ./scripts/local/generate-ci-env.sh /tmp/cetech-ci.env
           echo "path=/tmp/cetech-ci.env" >> "${GITHUB_OUTPUT}"
 
       - name: Validate Docker Compose
