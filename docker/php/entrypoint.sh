@@ -73,12 +73,14 @@ fi
 # ==================================================
 # Install Public Plugins
 # ==================================================
-
-if [[ -x /usr/local/bin/install-public-plugins ]]; then
-	/usr/local/bin/install-public-plugins \
-		"${CETECH_SITE_ID:-${APP_SLUG:-corporate}}" \
-		"${INSTALL_DEV_TOOLS:-0}"
-fi
+#
+# Public plugin installation is performed during image build so the
+# runtime container can start without re-issuing network-dependent
+# WP-CLI installs on every compose restart. Re-running that step here
+# can keep PHP-FPM from becoming ready and cause the Compose health
+# gate to fail unexpectedly.
+#
+# ==================================================
 
 
 # ==================================================
