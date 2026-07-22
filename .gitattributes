@@ -1,0 +1,27 @@
+~/src/cetech-platform/.gitattributes
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.php text eol=lf
+*.conf text eol=lf
+*.cnf text eol=lf
+*.ini text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.sql text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.zst binary
+*.woff binary
+*.woff2 binary

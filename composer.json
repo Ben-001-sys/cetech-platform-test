@@ -1,0 +1,27 @@
+{
+  "name": "cetech/cetech-platform",
+  "description": "CETECH WordPress and WooCommerce platform",
+  "type": "project",
+  "license": "proprietary",
+  "require": {},
+  "require-dev": {
+    "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+    "phpcompatibility/phpcompatibility-wp": "^2.1",
+    "squizlabs/php_codesniffer": "^3.13",
+    "wp-coding-standards/wpcs": "^3.2"
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    },
+    "sort-packages": true
+  },
+  "scripts": {
+    "lint:php": "find apps docker scripts -type f -name '*.php' -print0 | xargs -0 -n1 php -l",
+    "lint:phpcs": "phpcs",
+    "test": [
+      "@lint:php",
+      "@lint:phpcs"
+    ]
+  }
+}

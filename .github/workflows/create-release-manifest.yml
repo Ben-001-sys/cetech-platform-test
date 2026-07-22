@@ -1,0 +1,59 @@
+name: Create Release Manifest
+
+on:
+  workflow_run:
+    workflows:
+      - Release Images
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  manifest:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out exact commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Download release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          mkdir -p downloaded-release-records
+
+          gh run download "${RUN_ID}" \
+            --dir downloaded-release-records
+
+      - name: Assemble manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          find downloaded-release-records \
+            -type f \
+            -name '*.json' \
+            -print0 \
+            | sort -z \
+            | xargs -0 jq -s \
+            > release-manifest.json
+
+          jq -e 'length == 3' release-manifest.json
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@v5
+        with:
+          name: cetech-release-manifest-${{ github.event.workflow_run.head_sha }}
+          path: release-manifest.json
+          retention-days: 365

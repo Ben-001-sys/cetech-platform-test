@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<ruleset name="CETECH">
+  <description>
+    CETECH WordPress and WooCommerce coding standards.
+  </description>
+
+  <file>apps</file>
+  <file>docker/php</file>
+
+  <exclude-pattern>*/vendor/*</exclude-pattern>
+  <exclude-pattern>*/node_modules/*</exclude-pattern>
+  <exclude-pattern>*/wp-content/plugins/woocommerce/*</exclude-pattern>
+  <exclude-pattern>*/wp-content/plugins/redis-cache/*</exclude-pattern>
+  <exclude-pattern>*/wp-content/plugins/query-monitor/*</exclude-pattern>
+  <exclude-pattern>*/wp-content/themes/woodmart/*</exclude-pattern>
+  <exclude-pattern>*/wp-content/uploads/*</exclude-pattern>
+
+  <arg name="basepath" value="."/>
+  <arg name="colors"/>
+  <arg name="parallel" value="8"/>
+  <arg value="sp"/>
+
+  <rule ref="WordPress-Extra"/>
+  <rule ref="WordPress-Docs"/>
+  <rule ref="PHPCompatibilityWP">
+    <config name="testVersion" value="8.4-"/>
+  </rule>
+
+  <rule ref="WordPress.WP.I18n">
+    <properties>
+      <property
+        name="text_domain"
+        type="array"
+        value="cetech,cetech-store"
+      />
+    </properties>
+  </rule>
+</ruleset>

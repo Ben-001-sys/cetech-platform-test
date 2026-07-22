@@ -1,0 +1,100 @@
+~/src/cetech-platform/.gitignore
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+environments/**/.env
+environments/**/.env.*
+!environments/**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.age
+*.gpg
+
+# Local certificates
+environments/local/certs/*
+!environments/local/certs/.gitkeep
+!environments/local/certs/README.md
+
+# WordPress runtime
+**/wp-content/uploads/*
+!**/wp-content/uploads/.gitkeep
+
+**/wp-content/cache/
+**/wp-content/upgrade/
+**/wp-content/backup*/
+**/wp-content/backups/
+**/wp-content/ai1wm-backups/
+**/wp-content/updraft/
+**/wp-content/wflogs/
+**/wp-content/languages/
+**/wp-content/debug.log
+**/wp-content/object-cache.php
+**/wp-content/advanced-cache.php
+**/wp-content/db.php
+**/wp-content/sunrise.php
+
+# Third-party plugins are restored from the dependency/release manifest
+apps/*/wp-content/plugins/*
+!apps/*/wp-content/plugins/.gitkeep
+!apps/*/wp-content/plugins/cetech-*/
+!apps/*/wp-content/plugins/cetech-*/**
+
+# Third-party themes are restored from the dependency/release manifest
+apps/*/wp-content/themes/*
+!apps/*/wp-content/themes/.gitkeep
+!apps/*/wp-content/themes/cetech-*/
+!apps/*/wp-content/themes/cetech-*/**
+
+# Keep all must-use plugins under source control
+!apps/*/wp-content/mu-plugins/
+!apps/*/wp-content/mu-plugins/**
+
+# Database and backup files
+*.sql
+*.sql.gz
+*.sql.zst
+*.dump
+*.backup
+*.bak
+*.tar
+*.tar.gz
+*.tar.zst
+
+# Logs and runtime
+*.log
+logs/
+runtime/
+tmp/
+temp/
+.cache/
+coverage/
+
+# Composer and Node
+vendor/
+node_modules/
+.npm/
+.pnpm-store/
+
+# IDE and operating system
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test output
+tests/output/
+playwright-report/
+test-results/
+
+# Licensed/private packages
+packages/private/
+packages/cache/
+commercial-packages.lock

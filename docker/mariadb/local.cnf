@@ -1,0 +1,61 @@
+# ==================================================
+# MariaDB Server
+# ==================================================
+
+[mariadb]
+
+# Character Set
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# Networking
+skip-name-resolve = 1
+max_connections = 200
+
+# InnoDB
+innodb_buffer_pool_size = 2G
+innodb_buffer_pool_instances = 2
+innodb_log_file_size = 512M
+innodb_log_buffer_size = 64M
+innodb_flush_method = O_DIRECT
+innodb_flush_log_at_trx_commit = 1
+innodb_file_per_table = 1
+
+# Temporary Tables
+tmp_table_size = 64M
+max_heap_table_size = 64M
+
+# Table Cache
+table_open_cache = 4000
+table_definition_cache = 4000
+thread_cache_size = 50
+
+# Limits
+max_allowed_packet = 256M
+
+# Slow Query Log
+slow_query_log = 1
+slow_query_log_file = /var/lib/mysql/slow-query.log
+long_query_time = 1
+log_queries_not_using_indexes = 0
+
+# Performance Schema
+performance_schema = ON
+
+# Binary Logging
+log_bin = mariadb-bin
+binlog_format = ROW
+binlog_expire_logs_seconds = 604800
+sync_binlog = 1
+
+# Transaction Isolation
+transaction_isolation = READ-COMMITTED
+
+
+# ==================================================
+# Client
+# ==================================================
+
+[client]
+
+default-character-set = utf8mb4

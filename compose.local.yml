@@ -1,0 +1,686 @@
+name: ${COMPOSE_PROJECT_NAME:-cetech}
+
+x-php-build: &php-build
+  context: .
+  dockerfile: docker/php/Dockerfile
+  args:
+    PHP_IMAGE: ${PHP_IMAGE}
+    WP_CLI_IMAGE: ${WP_CLI_IMAGE}
+    WORDPRESS_VERSION: ${WORDPRESS_VERSION}
+    PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+
+x-php-common: &php-common
+  restart: unless-stopped
+  init: true
+  depends_on:
+    mariadb:
+      condition: service_healthy
+    mailpit:
+      condition: service_started
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+    - /var/tmp:size=128m,mode=1777
+  networks:
+    - data
+  logging:
+    driver: json-file
+    options:
+      max-size: 20m
+      max-file: "3"
+
+x-nginx-common: &nginx-common
+  image: nginx:${NGINX_VERSION}
+  restart: unless-stopped
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /var/cache/nginx:size=128m,mode=0755
+    - /var/run:size=16m,mode=0755
+  logging:
+    driver: json-file
+    options:
+      max-size: 20m
+      max-file: "3"
+
+services:
+  traefik:
+    image: traefik:${TRAEFIK_VERSION}
+    restart: unless-stopped
+    init: true
+    command:
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+      - --api.dashboard=true
+      - --api.insecure=false
+      - --log.level=INFO
+      - --accesslog=true
+      - --accesslog.format=json
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --ping=true
+      - --ping.entrypoint=traefik
+      - --entrypoints.traefik.address=:8082
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./environments/local/certs:/etc/traefik/certs:ro
+    networks:
+      - edge
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - traefik
+        - healthcheck
+        - --ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.traefik-local.rule: Host(`traefik.cetech.test`)
+      traefik.http.routers.traefik-local.entrypoints: websecure
+      traefik.http.routers.traefik-local.tls: "true"
+      traefik.http.routers.traefik-local.service: api@internal
+
+  front-door:
+    <<: *nginx-common
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/front-door/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      corporate-nginx:
+        condition: service_healthy
+      store-nginx:
+        condition: service_healthy
+      blog-nginx:
+        condition: service_healthy
+    networks:
+      - edge
+      - corporate
+      - store
+      - blog
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:8080/healthz | grep -q front-door-ok
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: cetech_edge
+      traefik.http.routers.cetech-local.rule: Host(`cetech.test`) || Host(`www.cetech.test`)
+      traefik.http.routers.cetech-local.entrypoints: websecure
+      traefik.http.routers.cetech-local.tls: "true"
+      traefik.http.services.cetech-local.loadbalancer.server.port: "8080"
+
+  corporate-php:
+    <<: *php-common
+    build:
+      <<: *php-build
+      args:
+        PHP_IMAGE: ${PHP_IMAGE}
+        WP_CLI_IMAGE: ${WP_CLI_IMAGE}
+        WORDPRESS_VERSION: ${WORDPRESS_VERSION}
+        PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        APP_DIR: apps/corporate
+        APP_SLUG: corporate
+        INSTALL_DEV_TOOLS: "1"
+    environment:
+      WP_ROOT: /var/www/html
+      WORDPRESS_DB_HOST: mariadb:3306
+      WORDPRESS_DB_NAME: ${CORPORATE_DB_NAME}
+      WORDPRESS_DB_USER: ${CORPORATE_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${CORPORATE_DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: corp_
+      WORDPRESS_HOME: https://cetech.test
+      WORDPRESS_SITEURL: https://cetech.test
+      WORDPRESS_COOKIE_PATH: /
+      WORDPRESS_SITE_COOKIE_PATH: /
+      WORDPRESS_ENVIRONMENT_TYPE: local
+      WORDPRESS_DEBUG: "true"
+      WORDPRESS_DEBUG_DISPLAY: "true"
+      WORDPRESS_DEBUG_LOG: "true"
+      WORDPRESS_SCRIPT_DEBUG: "true"
+      WORDPRESS_DISABLE_AUTO_UPDATES: "true"
+      WORDPRESS_MEMORY_LIMIT: 256M
+      WORDPRESS_MAX_MEMORY_LIMIT: 512M
+      WORDPRESS_VALKEY_HOST: corporate-valkey
+      WORDPRESS_VALKEY_PORT: "6379"
+      WORDPRESS_VALKEY_PASSWORD: ${CORPORATE_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:local:corporate:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:local:corporate:"
+      WORDPRESS_AUTH_KEY: ${CORPORATE_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${CORPORATE_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${CORPORATE_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${CORPORATE_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${CORPORATE_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${CORPORATE_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${CORPORATE_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${CORPORATE_NONCE_SALT}
+      CETECH_SITE_ID: corporate
+      CETECH_ENABLE_XMLRPC: "false"
+    volumes:
+      - corporate-root:/var/www/html
+      - ./apps/corporate/wp-content:/var/www/html/wp-content
+    networks:
+      - corporate
+      - data
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      corporate-valkey:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  corporate-nginx:
+    <<: *nginx-common
+    volumes:
+      - corporate-root:/var/www/html:ro
+      - ./apps/corporate/wp-content:/var/www/html/wp-content:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/corporate/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/common:/etc/nginx/snippets:ro
+    depends_on:
+      corporate-php:
+        condition: service_healthy
+    networks:
+      - corporate
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:8080/healthz | grep -q corporate-nginx-ok
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  corporate-cli:
+    profiles: ["cli"]
+    build:
+      <<: *php-build
+      args:
+        PHP_IMAGE: ${PHP_IMAGE}
+        WP_CLI_IMAGE: ${WP_CLI_IMAGE}
+        WORDPRESS_VERSION: ${WORDPRESS_VERSION}
+        PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        APP_DIR: apps/corporate
+        APP_SLUG: corporate
+        INSTALL_DEV_TOOLS: "1"
+    entrypoint: ["/bin/bash"]
+    environment:
+      WP_ROOT: /var/www/html
+      WORDPRESS_DB_HOST: mariadb:3306
+      WORDPRESS_DB_NAME: ${CORPORATE_DB_NAME}
+      WORDPRESS_DB_USER: ${CORPORATE_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${CORPORATE_DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: corp_
+      WORDPRESS_HOME: https://cetech.test
+      WORDPRESS_SITEURL: https://cetech.test
+      WORDPRESS_COOKIE_PATH: /
+      WORDPRESS_SITE_COOKIE_PATH: /
+      WORDPRESS_ENVIRONMENT_TYPE: local
+      WORDPRESS_DEBUG: "true"
+      WORDPRESS_VALKEY_HOST: corporate-valkey
+      WORDPRESS_VALKEY_PORT: "6379"
+      WORDPRESS_VALKEY_PASSWORD: ${CORPORATE_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:local:corporate:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:local:corporate:"
+      WORDPRESS_AUTH_KEY: ${CORPORATE_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${CORPORATE_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${CORPORATE_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${CORPORATE_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${CORPORATE_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${CORPORATE_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${CORPORATE_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${CORPORATE_NONCE_SALT}
+      CETECH_SITE_ID: corporate
+      CETECH_ENABLE_XMLRPC: "false"
+
+    volumes:
+      - corporate-root:/var/www/html
+      - ./apps/corporate/wp-content:/var/www/html/wp-content
+    networks:
+      - corporate
+      - data
+
+  store-php:
+    <<: *php-common
+    build:
+      <<: *php-build
+      args:
+        PHP_IMAGE: ${PHP_IMAGE}
+        WP_CLI_IMAGE: ${WP_CLI_IMAGE}
+        WORDPRESS_VERSION: ${WORDPRESS_VERSION}
+        PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        APP_DIR: apps/store-gh
+        APP_SLUG: store-gh
+        INSTALL_DEV_TOOLS: "1"
+    environment:
+      WP_ROOT: /var/www/html/gh
+      WORDPRESS_DB_HOST: mariadb:3306
+      WORDPRESS_DB_NAME: ${STORE_DB_NAME}
+      WORDPRESS_DB_USER: ${STORE_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${STORE_DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: gh_
+      WORDPRESS_HOME: https://cetech.test/gh
+      WORDPRESS_SITEURL: https://cetech.test/gh
+      WORDPRESS_COOKIE_PATH: /gh/
+      WORDPRESS_SITE_COOKIE_PATH: /gh/
+      WORDPRESS_ENVIRONMENT_TYPE: local
+      WORDPRESS_DEBUG: "true"
+      WORDPRESS_DEBUG_DISPLAY: "true"
+      WORDPRESS_DEBUG_LOG: "true"
+      WORDPRESS_SCRIPT_DEBUG: "true"
+      WORDPRESS_DISABLE_AUTO_UPDATES: "true"
+      WORDPRESS_MEMORY_LIMIT: 512M
+      WORDPRESS_MAX_MEMORY_LIMIT: 768M
+      WORDPRESS_VALKEY_HOST: store-valkey
+      WORDPRESS_VALKEY_PORT: "6379"
+      WORDPRESS_VALKEY_PASSWORD: ${STORE_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:local:store-gh:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:local:store-gh:"
+      WORDPRESS_AUTH_KEY: ${STORE_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${STORE_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${STORE_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${STORE_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${STORE_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${STORE_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${STORE_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${STORE_NONCE_SALT}
+      CETECH_SITE_ID: store-gh
+      CETECH_ENABLE_XMLRPC: "false"
+    volumes:
+      - store-root:/var/www/html
+      - ./apps/store-gh/wp-content:/var/www/html/gh/wp-content
+    networks:
+      - store
+      - data
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      store-valkey:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  store-nginx:
+    <<: *nginx-common
+    volumes:
+      - store-root:/var/www/html:ro
+      - ./apps/store-gh/wp-content:/var/www/html/gh/wp-content:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/store-gh/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/common:/etc/nginx/snippets:ro
+    depends_on:
+      store-php:
+        condition: service_healthy
+    networks:
+      - store
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:8080/healthz | grep -q store-nginx-ok
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  store-cli:
+    profiles: ["cli"]
+    build:
+      <<: *php-build
+      args:
+        PHP_IMAGE: ${PHP_IMAGE}
+        WP_CLI_IMAGE: ${WP_CLI_IMAGE}
+        WORDPRESS_VERSION: ${WORDPRESS_VERSION}
+        PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        APP_DIR: apps/store-gh
+        APP_SLUG: store-gh
+        INSTALL_DEV_TOOLS: "1"
+    entrypoint: ["/bin/bash"]
+    environment:
+      WP_ROOT: /var/www/html/gh
+      WORDPRESS_DB_HOST: mariadb:3306
+      WORDPRESS_DB_NAME: ${STORE_DB_NAME}
+      WORDPRESS_DB_USER: ${STORE_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${STORE_DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: gh_
+      WORDPRESS_HOME: https://cetech.test/gh
+      WORDPRESS_SITEURL: https://cetech.test/gh
+      WORDPRESS_COOKIE_PATH: /gh/
+      WORDPRESS_SITE_COOKIE_PATH: /gh/
+      WORDPRESS_ENVIRONMENT_TYPE: local
+      WORDPRESS_DEBUG: "true"
+      WORDPRESS_VALKEY_HOST: store-valkey
+      WORDPRESS_VALKEY_PORT: "6379"
+      WORDPRESS_VALKEY_PASSWORD: ${STORE_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:local:store-gh:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:local:store-gh:"
+      WORDPRESS_AUTH_KEY: ${STORE_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${STORE_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${STORE_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${STORE_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${STORE_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${STORE_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${STORE_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${STORE_NONCE_SALT}
+      CETECH_SITE_ID: store-gh
+      CETECH_ENABLE_XMLRPC: "false"
+    volumes:
+      - store-root:/var/www/html
+      - ./apps/store-gh/wp-content:/var/www/html/gh/wp-content
+    networks:
+      - store
+      - data
+
+  blog-php:
+    <<: *php-common
+    build:
+      <<: *php-build
+      args:
+        PHP_IMAGE: ${PHP_IMAGE}
+        WP_CLI_IMAGE: ${WP_CLI_IMAGE}
+        WORDPRESS_VERSION: ${WORDPRESS_VERSION}
+        PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        APP_DIR: apps/blog-en
+        APP_SLUG: blog-en
+        INSTALL_DEV_TOOLS: "1"
+
+    environment:
+      WP_ROOT: /var/www/html/en
+      WORDPRESS_DB_HOST: mariadb:3306
+      WORDPRESS_DB_NAME: ${BLOG_DB_NAME}
+      WORDPRESS_DB_USER: ${BLOG_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${BLOG_DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: en_
+      WORDPRESS_HOME: https://cetech.test/en
+      WORDPRESS_SITEURL: https://cetech.test/en
+      WORDPRESS_COOKIE_PATH: /en/
+      WORDPRESS_SITE_COOKIE_PATH: /en/
+      WORDPRESS_ENVIRONMENT_TYPE: local
+      WORDPRESS_DEBUG: "true"
+      WORDPRESS_DEBUG_DISPLAY: "true"
+      WORDPRESS_DEBUG_LOG: "true"
+      WORDPRESS_SCRIPT_DEBUG: "true"
+      WORDPRESS_DISABLE_AUTO_UPDATES: "true"
+      WORDPRESS_MEMORY_LIMIT: 256M
+      WORDPRESS_MAX_MEMORY_LIMIT: 512M
+      WORDPRESS_VALKEY_HOST: blog-valkey
+      WORDPRESS_VALKEY_PORT: "6379"
+      WORDPRESS_VALKEY_PASSWORD: ${BLOG_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:local:blog-en:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:local:blog-en:"
+      WORDPRESS_AUTH_KEY: ${BLOG_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${BLOG_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${BLOG_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${BLOG_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${BLOG_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${BLOG_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${BLOG_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${BLOG_NONCE_SALT}
+      CETECH_SITE_ID: blog-en
+      CETECH_ENABLE_XMLRPC: "false"
+    volumes:
+      - blog-root:/var/www/html
+      - ./apps/blog-en/wp-content:/var/www/html/en/wp-content
+    networks:
+      - blog
+      - data
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      blog-valkey:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  blog-nginx:
+    <<: *nginx-common
+    volumes:
+      - blog-root:/var/www/html:ro
+      - ./apps/blog-en/wp-content:/var/www/html/en/wp-content:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/blog-en/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/common:/etc/nginx/snippets:ro
+    depends_on:
+      blog-php:
+        condition: service_healthy
+    networks:
+      - blog
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:8080/healthz | grep -q blog-nginx-ok
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  blog-cli:
+    profiles: ["cli"]
+    build:
+      <<: *php-build
+      args:
+        PHP_IMAGE: ${PHP_IMAGE}
+        WP_CLI_IMAGE: ${WP_CLI_IMAGE}
+        WORDPRESS_VERSION: ${WORDPRESS_VERSION}
+        PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        APP_DIR: apps/blog-en
+        APP_SLUG: blog-en
+        INSTALL_DEV_TOOLS: "1"
+    entrypoint: ["/bin/bash"]
+    environment:
+      WP_ROOT: /var/www/html/en
+      WORDPRESS_DB_HOST: mariadb:3306
+      WORDPRESS_DB_NAME: ${BLOG_DB_NAME}
+      WORDPRESS_DB_USER: ${BLOG_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${BLOG_DB_PASSWORD}
+      WORDPRESS_TABLE_PREFIX: en_
+      WORDPRESS_HOME: https://cetech.test/en
+      WORDPRESS_SITEURL: https://cetech.test/en
+      WORDPRESS_COOKIE_PATH: /en/
+      WORDPRESS_SITE_COOKIE_PATH: /en/
+      WORDPRESS_ENVIRONMENT_TYPE: local
+      WORDPRESS_DEBUG: "true"
+      WORDPRESS_VALKEY_HOST: blog-valkey
+      WORDPRESS_VALKEY_PORT: "6379"
+      WORDPRESS_VALKEY_PASSWORD: ${BLOG_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:local:blog-en:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:local:blog-en:"
+      WORDPRESS_AUTH_KEY: ${BLOG_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${BLOG_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${BLOG_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${BLOG_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${BLOG_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${BLOG_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${BLOG_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${BLOG_NONCE_SALT}
+      CETECH_SITE_ID: blog-en
+      CETECH_ENABLE_XMLRPC: "false"
+    volumes:
+      - blog-root:/var/www/html
+      - ./apps/blog-en/wp-content:/var/www/html/en/wp-content
+    networks:
+      - blog
+      - data
+
+  mariadb:
+    image: mariadb:${MARIADB_VERSION}
+    restart: unless-stopped
+    init: true
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_AUTO_UPGRADE: "0"
+      CORPORATE_DB_NAME: ${CORPORATE_DB_NAME}
+      CORPORATE_DB_USER: ${CORPORATE_DB_USER}
+      CORPORATE_DB_PASSWORD: ${CORPORATE_DB_PASSWORD}
+      STORE_DB_NAME: ${STORE_DB_NAME}
+      STORE_DB_USER: ${STORE_DB_USER}
+      STORE_DB_PASSWORD: ${STORE_DB_PASSWORD}
+      BLOG_DB_NAME: ${BLOG_DB_NAME}
+      BLOG_DB_USER: ${BLOG_DB_USER}
+      BLOG_DB_PASSWORD: ${BLOG_DB_PASSWORD}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./docker/mariadb/local.cnf:/etc/mysql/conf.d/90-cetech.cnf:ro
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - healthcheck.sh
+        - --connect
+        - --innodb_initialized
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "3"
+
+  corporate-valkey:
+    image: valkey/valkey:${VALKEY_VERSION}
+    restart: unless-stopped
+    init: true
+    environment:
+      VALKEY_PASSWORD: ${CORPORATE_VALKEY_PASSWORD}
+      VALKEY_MAXMEMORY: 256mb
+    entrypoint:
+      - /usr/local/bin/cetech-valkey-entrypoint
+    volumes:
+      - corporate-valkey-data:/data
+      - ./docker/valkey/valkey.conf.template:/etc/valkey/valkey.conf.template:ro
+      - ./docker/valkey/entrypoint.sh:/usr/local/bin/cetech-valkey-entrypoint:ro
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - valkey-cli -a "$${VALKEY_PASSWORD}" ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  store-valkey:
+    image: valkey/valkey:${VALKEY_VERSION}
+    restart: unless-stopped
+    init: true
+    environment:
+      VALKEY_PASSWORD: ${STORE_VALKEY_PASSWORD}
+      VALKEY_MAXMEMORY: 512mb
+    entrypoint:
+      - /usr/local/bin/cetech-valkey-entrypoint
+    volumes:
+      - store-valkey-data:/data
+      - ./docker/valkey/valkey.conf.template:/etc/valkey/valkey.conf.template:ro
+      - ./docker/valkey/entrypoint.sh:/usr/local/bin/cetech-valkey-entrypoint:ro
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - valkey-cli -a "$${VALKEY_PASSWORD}" ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  blog-valkey:
+    image: valkey/valkey:${VALKEY_VERSION}
+    restart: unless-stopped
+    init: true
+    environment:
+      VALKEY_PASSWORD: ${BLOG_VALKEY_PASSWORD}
+      VALKEY_MAXMEMORY: 256mb
+    entrypoint:
+      - /usr/local/bin/cetech-valkey-entrypoint
+    volumes:
+      - blog-valkey-data:/data
+      - ./docker/valkey/valkey.conf.template:/etc/valkey/valkey.conf.template:ro
+      - ./docker/valkey/entrypoint.sh:/usr/local/bin/cetech-valkey-entrypoint:ro
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - valkey-cli -a "$${VALKEY_PASSWORD}" ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:${MAILPIT_VERSION}
+    restart: unless-stopped
+    init: true
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+      MP_ALLOW_INTERNAL_HTTP_REQUESTS: "false"
+    ports:
+      - "127.0.0.1:8025:8025"
+    volumes:
+      - mailpit-data:/data
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "2"
+
+networks:
+  edge:
+    # name: cetech_edge
+  corporate:
+    name: cetech_corporate
+    # internal: true
+  store:
+    name: cetech_store
+    # internal: true
+  blog:
+    name: cetech_blog
+    # internal: true
+  data:
+    name: cetech_data
+    # internal: true
+
+volumes:
+  corporate-root:
+  store-root:
+  blog-root:
+  mariadb-data:
+  corporate-valkey-data:
+  store-valkey-data:
+  blog-valkey-data:
+  mailpit-data:

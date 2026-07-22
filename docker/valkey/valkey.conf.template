@@ -1,0 +1,88 @@
+# ==================================================
+# Network
+# ==================================================
+
+bind 0.0.0.0
+protected-mode yes
+port 6379
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+
+
+# ==================================================
+# Process & Logging
+# ==================================================
+
+daemonize no
+supervised no
+loglevel notice
+logfile ""
+
+
+# ==================================================
+# Database
+# ==================================================
+
+databases 1
+
+
+# ==================================================
+# Persistence
+# ==================================================
+
+save 900 1
+save 300 10
+save 60 10000
+
+stop-writes-on-bgsave-error yes
+
+rdbcompression yes
+rdbchecksum yes
+
+dbfilename dump.rdb
+dir /data
+
+appendonly no
+
+
+# ==================================================
+# Memory Management
+# ==================================================
+
+maxmemory ${VALKEY_MAXMEMORY}
+maxmemory-policy allkeys-lfu
+maxmemory-samples 10
+
+
+# ==================================================
+# Lazy Freeing
+# ==================================================
+
+lazyfree-lazy-eviction yes
+lazyfree-lazy-expire yes
+lazyfree-lazy-server-del yes
+
+replica-lazy-flush yes
+
+
+# ==================================================
+# Active Defragmentation
+# ==================================================
+
+activedefrag yes
+
+active-defrag-ignore-bytes 100mb
+active-defrag-threshold-lower 10
+active-defrag-threshold-upper 100
+
+
+# ==================================================
+# Security
+# ==================================================
+
+requirepass ${VALKEY_PASSWORD}
+
+#rename-command FLUSHALL ""
+#rename-command FLUSHDB ""
+#rename-command CONFIG ""
