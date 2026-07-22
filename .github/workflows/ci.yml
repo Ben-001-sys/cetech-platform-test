@@ -235,7 +235,6 @@ jobs:
             imagick \
             intl \
             mysqli \
-            opcache \
             pcntl \
             pdo_mysql \
             redis \
@@ -243,7 +242,11 @@ jobs:
             sockets \
             zip
           do
-            if ! grep -qi "^${module}$" /tmp/php-modules.txt; then
+            if [[ "${module}" == "opcache" ]]; then
+              if ! grep -qi '^Zend OPcache$' /tmp/php-modules.txt; then
+                missing_modules+=("${module}")
+              fi
+            elif ! grep -qi "^${module}$" /tmp/php-modules.txt; then
               missing_modules+=("${module}")
             fi
           done
