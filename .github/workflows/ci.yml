@@ -111,7 +111,20 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          docker pull "${PHP_CLI_IMAGE}"
+          for attempt in 1 2 3; do
+            echo "Pulling ${PHP_CLI_IMAGE} (attempt ${attempt}/3)"
+            if docker pull "${PHP_CLI_IMAGE}"; then
+              break
+            fi
+
+            if [[ "${attempt}" -lt 3 ]]; then
+              echo "Image pull failed; retrying in 10 seconds..."
+              sleep 10
+            else
+              echo "Image pull failed after 3 attempts." >&2
+              exit 1
+            fi
+          done
 
           docker run --rm \
             --volume "${PWD}:/app" \
