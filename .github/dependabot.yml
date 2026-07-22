@@ -40,14 +40,3 @@ updates:
       - "dependencies"
       - "docker"
 
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:15"
-      timezone: "Africa/Accra"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "docker"
