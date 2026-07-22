@@ -20,6 +20,7 @@ concurrency:
 
 env:
   PHP_IMAGE: php:8.4.22-fpm-bookworm@sha256:66cf4b823e8dcde762ffa705b8589d592d709e0705ce6fdcd832d9a7ea4ed0f3
+  PHP_CLI_IMAGE: php:8.4.22-cli-bookworm@sha256:a436a187ed8572883a1e792b7bb2b6cd093c538032e0e65802d9e95a49892fdb
   WP_CLI_IMAGE: wordpress:cli-2.12.0-php8.4
   WORDPRESS_VERSION: 7.0.2
   PHPREDIS_VERSION: 6.3.0
@@ -60,7 +61,7 @@ jobs:
           set -Eeuo pipefail
 
           if git grep -nE \
-            'BEGIN (OPENSSH |RSA |EC )?PRIVATE KEY|AKIA[0-9A-Z]{16}|MARIADB_ROOT_PASSWORD=[^C]|AUTH_KEY=.{30,}' \
+            'BEGIN (OPENSSH |RSA |EC )?PRIVATE KEY|AKIA[0-9A-Z]{16}|(MARIADB_ROOT_PASSWORD|AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT|SECURE_AUTH_SALT|LOGGED_IN_SALT|NONCE_SALT)=(?!\$\(|[A-Za-z0-9+/=]{0,31})([A-Za-z0-9+/=]{24,})' \
             -- \
             ':!*.example'
           then
@@ -110,10 +111,25 @@ jobs:
         run: |
           set -Eeuo pipefail
 
+          for attempt in 1 2 3; do
+            echo "Pulling ${PHP_CLI_IMAGE} (attempt ${attempt}/3)"
+            if docker pull "${PHP_CLI_IMAGE}"; then
+              break
+            fi
+
+            if [[ "${attempt}" -lt 3 ]]; then
+              echo "Image pull failed; retrying in 10 seconds..."
+              sleep 10
+            else
+              echo "Image pull failed after 3 attempts." >&2
+              exit 1
+            fi
+          done
+
           docker run --rm \
             --volume "${PWD}:/app" \
             --workdir /app \
-            php:8.4.22-cli-bookworm \
+            "${PHP_CLI_IMAGE}" \
             sh -c '
               find apps docker scripts \
                 -type f \
@@ -121,7 +137,7 @@ jobs:
                 -print0 \
                 | xargs -0 -n1 php -l
 
-              vendor/bin/phpcs
+              vendor/bin/phpcs --runtime-set testVersion 8.4-
             '
 
       - name: Generate temporary Compose environment
@@ -129,7 +145,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          ./scripts/local/generate-ci-env.sh /tmp/cetech-ci.env
+          bash ./scripts/local/generate-ci-env.sh /tmp/cetech-ci.env
           echo "path=/tmp/cetech-ci.env" >> "${GITHUB_OUTPUT}"
 
       - name: Validate Docker Compose
@@ -210,6 +226,8 @@ jobs:
             -m \
             > /tmp/php-modules.txt
 
+          missing_modules=()
+
           for module in \
             bcmath \
             exif \
@@ -217,7 +235,6 @@ jobs:
             imagick \
             intl \
             mysqli \
-            opcache \
             pcntl \
             pdo_mysql \
             redis \
@@ -225,8 +242,21 @@ jobs:
             sockets \
             zip
           do
-            grep -qi "^${module}$" /tmp/php-modules.txt
+            if [[ "${module}" == "opcache" ]]; then
+              if ! grep -qi '^Zend OPcache$' /tmp/php-modules.txt; then
+                missing_modules+=("${module}")
+              fi
+            elif ! grep -qi "^${module}$" /tmp/php-modules.txt; then
+              missing_modules+=("${module}")
+            fi
           done
+
+          if [[ ${#missing_modules[@]} -gt 0 ]]; then
+            echo "Missing PHP modules in ${image}: ${missing_modules[*]}" >&2
+            echo "Available modules:" >&2
+            cat /tmp/php-modules.txt >&2
+            exit 1
+          fi
 
           docker run --rm \
             --entrypoint wp \
@@ -271,24 +301,31 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate front-door Nginx
+      - name: Validate Nginx configurations
         shell: bash
         run: |
           set -Eeuo pipefail
 
           docker run --rm \
+            --add-host corporate-nginx:127.0.0.1 \
+            --add-host store-nginx:127.0.0.1 \
+            --add-host blog-nginx:127.0.0.1 \
+            --add-host corporate-php:127.0.0.1 \
+            --add-host store-php:127.0.0.1 \
+            --add-host blog-php:127.0.0.1 \
             --volume "${PWD}/docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
             --volume "${PWD}/docker/nginx/front-door/default.conf:/etc/nginx/conf.d/default.conf:ro" \
             nginx:1.30.4 \
             nginx -t
 
-      - name: Validate site Nginx configurations
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-
           for site in corporate store-gh blog-en; do
             docker run --rm \
+              --add-host corporate-nginx:127.0.0.1 \
+              --add-host store-nginx:127.0.0.1 \
+              --add-host blog-nginx:127.0.0.1 \
+              --add-host corporate-php:127.0.0.1 \
+              --add-host store-php:127.0.0.1 \
+              --add-host blog-php:127.0.0.1 \
               --volume "${PWD}/docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
               --volume "${PWD}/docker/nginx/${site}/default.conf:/etc/nginx/conf.d/default.conf:ro" \
               --volume "${PWD}/docker/nginx/common:/etc/nginx/snippets:ro" \

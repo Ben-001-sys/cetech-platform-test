@@ -3,7 +3,6 @@
   "description": "CETECH WordPress and WooCommerce platform",
   "type": "project",
   "license": "proprietary",
-  "require": {},
   "require-dev": {
     "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
     "phpcompatibility/phpcompatibility-wp": "^2.1",

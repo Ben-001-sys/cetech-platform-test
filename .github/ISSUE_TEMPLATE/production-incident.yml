@@ -1,0 +1,49 @@
+name: Production incident
+description: Record a CETECH production incident.
+title: "[INCIDENT] "
+labels:
+  - incident
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - SEV-1 Checkout unavailable
+        - SEV-2 Major degradation
+        - SEV-3 Limited impact
+        - SEV-4 Minor issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: Symptoms
+      description: Do not include secrets or customer personal data.
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected
+    attributes:
+      label: Affected components
+    validations:
+      required: true
+
+  - type: textarea
+    id: timeline
+    attributes:
+      label: Timeline in UTC
+    validations:
+      required: true
+
+  - type: textarea
+    id: mitigations
+    attributes:
+      label: Mitigations attempted
+
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback state
