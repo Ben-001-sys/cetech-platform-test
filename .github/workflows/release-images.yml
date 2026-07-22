@@ -97,7 +97,7 @@ jobs:
 
       - name: Build and push immutable image
         id: build
-        uses: docker/build-push-action@v7.2.0
+        uses: docker/build-push-action@v7.3.0
         with:
           context: .
           file: docker/php/Dockerfile
