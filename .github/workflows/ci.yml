@@ -20,6 +20,7 @@ concurrency:
 
 env:
   PHP_IMAGE: php:8.4.22-fpm-bookworm@sha256:66cf4b823e8dcde762ffa705b8589d592d709e0705ce6fdcd832d9a7ea4ed0f3
+  PHP_CLI_IMAGE: php:8.4.22-cli-bookworm@sha256:a436a187ed8572883a1e792b7bb2b6cd093c538032e0e65802d9e95a49892fdb
   WP_CLI_IMAGE: wordpress:cli-2.12.0-php8.4
   WORDPRESS_VERSION: 7.0.2
   PHPREDIS_VERSION: 6.3.0
@@ -110,10 +111,12 @@ jobs:
         run: |
           set -Eeuo pipefail
 
+          docker pull "${PHP_CLI_IMAGE}"
+
           docker run --rm \
             --volume "${PWD}:/app" \
             --workdir /app \
-            php:8.4.22-cli-bookworm \
+            "${PHP_CLI_IMAGE}" \
             sh -c '
               find apps docker scripts \
                 -type f \
