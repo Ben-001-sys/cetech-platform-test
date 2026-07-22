@@ -137,7 +137,7 @@ jobs:
                 -print0 \
                 | xargs -0 -n1 php -l
 
-              vendor/bin/phpcs
+              vendor/bin/phpcs --runtime-set testVersion 8.4-
             '
 
       - name: Generate temporary Compose environment
