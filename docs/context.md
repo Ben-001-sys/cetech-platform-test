@@ -53,6 +53,72 @@ The current failing jobs seen in the attached log are:
    - Root cause: Trivy flags the `WORDPRESS_NONCE_KEY` build argument and environment value in `docker/php/Dockerfile` as a secret exposure.
    - This is a container security policy issue and is intentionally deferred.
 
+## New PHP runtime validation failure (resolved)
+
+### Exact CI failure
+
+The PHP image validation step in the workflow failed when executing:
+
+```bash
+set -Eeuo pipefail
+
+image="cetech-corporate-php:ci-${GITHUB_SHA}"
+
+docker run --rm \
+  --entrypoint php \
+  "${image}" \
+  -m
+```
+
+The underlying problem was not missing PHP extensions or a broken PHP binary. The container entrypoint script was configured to initialize WordPress into `/var/www/html`, but the runtime image exported `WP_ROOT=/usr/src/wordpress`, which did not match the entrypoint’s allowed root guard and caused the container startup path to fail before `php -m` could run.
+
+### Root cause
+
+The Docker image set `WP_ROOT=/usr/src/wordpress` while the entrypoint script expected a runtime path under `/var/www/html`. That mismatch caused the entrypoint validation to reject the container startup path with:
+
+```text
+Unsafe WP_ROOT: /usr/src/wordpress
+```
+
+### Investigation performed
+
+- Rebuilt the PHP image locally with the same Dockerfile and build arguments used by CI.
+- Re-ran the same container commands the workflow uses: `docker run --rm --entrypoint php <image> -v`, `docker run --rm --entrypoint php <image> -m`, `docker run --rm <image> which php`, and `docker run --rm <image> ls -l /usr/local/bin/php`.
+- Inspected the runtime image config and confirmed the entrypoint was `cetech-entrypoint` with `CMD ["php-fpm","-F"]`.
+- Verified that `/usr/local/bin/php` exists and that the expected PHP extensions are present in the runtime image.
+
+### Files changed
+
+- `docker/php/Dockerfile`
+- `docs/context.md`
+
+### Commands executed
+
+- `docker build --file docker/php/Dockerfile --build-arg PHP_IMAGE=... --build-arg WP_CLI_IMAGE=... --build-arg WORDPRESS_VERSION=7.0.2 --build-arg PHPREDIS_VERSION=6.3.0 --build-arg APP_DIR=apps/corporate --build-arg APP_SLUG=corporate --build-arg INSTALL_DEV_TOOLS=0 --tag cetech-corporate-php:ci-local .`
+- `docker run --rm --entrypoint php cetech-corporate-php:ci-local -v`
+- `docker run --rm --entrypoint php cetech-corporate-php:ci-local -m`
+- `docker run --rm cetech-corporate-php:ci-local which php`
+- `docker run --rm cetech-corporate-php:ci-local ls -l /usr/local/bin/php`
+
+### Why the previous implementation failed
+
+The previous runtime configuration pointed WordPress initialization at the source checkout path `/usr/src/wordpress` instead of the runtime document root `/var/www/html`. The entrypoint logic was written to guard against unsafe roots and rejected the mismatch, which prevented the container from starting correctly for routine CLI validation.
+
+### Why the fix works
+
+Setting `WP_ROOT=/var/www/html` aligns the runtime entrypoint with the actual path used by the container’s WordPress bootstrap and the `WORKDIR /var/www/html` layout. That makes the entrypoint initialize the correct runtime tree and allows the PHP CLI checks to run as intended.
+
+### Lessons learned
+
+- The Docker entrypoint and the image’s exported `WP_ROOT` value must agree on the same runtime document root.
+- Container health checks should be validated with the same CLI entrypoints used in CI, not only with default startup behavior.
+- It is important to verify the container’s real execution path (`php`, `wp`, and default startup) rather than assume the build succeeded because the image built without errors.
+
+### Commands that should not be repeated because they produced identical results
+
+- Re-running the same `docker build` command after the environment fix without changes.
+- Re-running the same `docker run --rm --entrypoint php <image> -m` command after the fix without first confirming the environment change was applied.
+
 ## Root causes discovered
 
 - Repository policy mismatch: `.gitignore` re-included `wp-content/uploads/.gitkeep`, which causes Git to track upload placeholder files even though the CI validator forbids tracked uploads. The official Git documentation confirms that `.gitignore` only affects untracked files; this was the reason the already-tracked `uploads/.gitkeep` placeholder files kept failing the validation rule.
