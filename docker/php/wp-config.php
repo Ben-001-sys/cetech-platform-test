@@ -27,6 +27,20 @@ function cetech_env(string $name, ?string $default = null): string
 }
 
 
+function cetech_env_required(string $name): string
+{
+	$value = getenv($name);
+
+	if ($value === false || $value === '') {
+		throw new RuntimeException(
+			sprintf('Required environment variable %s is missing.', $name)
+		);
+	}
+
+	return $value;
+}
+
+
 function cetech_env_bool(string $name, bool $default = false): bool
 {
 	$value = getenv($name);
@@ -62,15 +76,15 @@ $table_prefix = cetech_env('WORDPRESS_TABLE_PREFIX', 'wp_');
 |--------------------------------------------------------------------------
 */
 
-define('AUTH_KEY', cetech_env('WORDPRESS_AUTH_KEY', 'dev-auth-key'));
-define('SECURE_AUTH_KEY', cetech_env('WORDPRESS_SECURE_AUTH_KEY', 'dev-secure-auth-key'));
-define('LOGGED_IN_KEY', cetech_env('WORDPRESS_LOGGED_IN_KEY', 'dev-logged-in-key'));
-define('NONCE_KEY', cetech_env('WORDPRESS_NONCE_KEY', 'dev-nonce-key'));
+define('AUTH_KEY', cetech_env_required('WORDPRESS_AUTH_KEY'));
+define('SECURE_AUTH_KEY', cetech_env_required('WORDPRESS_SECURE_AUTH_KEY'));
+define('LOGGED_IN_KEY', cetech_env_required('WORDPRESS_LOGGED_IN_KEY'));
+define('NONCE_KEY', cetech_env_required('WORDPRESS_NONCE_KEY'));
 
-define('AUTH_SALT', cetech_env('WORDPRESS_AUTH_SALT', 'dev-auth-salt'));
-define('SECURE_AUTH_SALT', cetech_env('WORDPRESS_SECURE_AUTH_SALT', 'dev-secure-auth-salt'));
-define('LOGGED_IN_SALT', cetech_env('WORDPRESS_LOGGED_IN_SALT', 'dev-logged-in-salt'));
-define('NONCE_SALT', cetech_env('WORDPRESS_NONCE_SALT', 'dev-nonce-salt'));
+define('AUTH_SALT', cetech_env_required('WORDPRESS_AUTH_SALT'));
+define('SECURE_AUTH_SALT', cetech_env_required('WORDPRESS_SECURE_AUTH_SALT'));
+define('LOGGED_IN_SALT', cetech_env_required('WORDPRESS_LOGGED_IN_SALT'));
+define('NONCE_SALT', cetech_env_required('WORDPRESS_NONCE_SALT'));
 
 
 /*
@@ -223,7 +237,7 @@ define(
 
 define(
 	'WP_REDIS_PASSWORD',
-	cetech_env('WORDPRESS_VALKEY_PASSWORD', 'valkey')
+	cetech_env_required('WORDPRESS_VALKEY_PASSWORD')
 );
 
 define(

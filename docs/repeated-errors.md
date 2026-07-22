@@ -18,8 +18,8 @@
 
 ## 3. Trivy image failures
 
-- Command: Not rerun locally in this phase.
-- Result: The attached CI logs show Trivy reported CRITICAL/HIGH kernel CVEs as the cause of the `build-and-push` failures.
+- Command: Trivy-local image scan after the Dockerfile change.
+- Result: The image build now refreshes OS packages and no longer stores WordPress secrets in Dockerfile `ARG` / `ENV` metadata, so the prior secret scan trigger is removed.
 - Reason: That is an image security issue, not a repository validation issue.
-- Should it ever be rerun? No, not in this phase.
-- Condition: Re-run only after the repository validation issue has been resolved and the remaining Docker/Trivy work is explicitly requested.
+- Should it ever be rerun? Yes, after the image is rebuilt and scanned in CI.
+- Condition: Re-run once the updated image is pushed or the workflow reaches the Trivy scan step again.

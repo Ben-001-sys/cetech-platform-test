@@ -58,7 +58,8 @@ The current failing jobs seen in the attached log are:
 - Repository policy mismatch: `.gitignore` re-included `wp-content/uploads/.gitkeep`, which causes Git to track upload placeholder files even though the CI validator forbids tracked uploads. The official Git documentation confirms that `.gitignore` only affects untracked files; this was the reason the already-tracked `uploads/.gitkeep` placeholder files kept failing the validation rule.
 - The `build-and-push` failures are due to Trivy finding Linux kernel CVEs in the image base layers; they are image and upstream package issues.
 - The nginx validation failure is due to using an unresolved service hostname in the nginx config test context.
-- The secret scan failure is due to passing a nonce secret through build-time ARG/ENV creation.
+- The secret scan failure is due to passing WordPress secrets through Dockerfile `ARG` and `ENV` metadata, which exposes them to the image build history and Trivy secret scanning.
+- The image build also used the PHP base image without a package refresh, so OS packages in the final image remained behind the latest Debian security updates.
 
 ## Files involved
 
