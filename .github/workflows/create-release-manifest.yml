@@ -51,13 +51,20 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          find downloaded-release-records \
-            -type f \
-            -name '*.json' \
-            -print0 \
-            | sort -z \
-            | xargs -0 jq -s \
-            > release-manifest.json
+          mapfile -d '' release_records < <(
+            find downloaded-release-records \
+              -type f \
+              -name '*.json' \
+              -print0 \
+              | sort -z
+          )
+
+          if [[ ${#release_records[@]} -ne 3 ]]; then
+            echo "Expected 3 release records, found ${#release_records[@]}." >&2
+            exit 1
+          fi
+
+          jq -s '.' "${release_records[@]}" > release-manifest.json
 
           jq -e 'length == 3' release-manifest.json
 
