@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   packages: write
 
@@ -255,6 +256,8 @@ jobs:
       - name: Download PHP release records
         uses: actions/download-artifact@v5
         with:
+          pattern: release-${{ matrix.php_image }}-*
+          merge-multiple: true
           path: downloaded-release-records
 
       - name: Determine tags
