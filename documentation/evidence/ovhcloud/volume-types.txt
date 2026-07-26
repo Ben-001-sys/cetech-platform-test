@@ -1,0 +1,10 @@
++--------------------------------------+----------------------+-----------+
+| ID                                   | Name                 | Is Public |
++--------------------------------------+----------------------+-----------+
+| 02bd88bd-6faf-42ae-af50-f3192a5f7303 | high-speed-gen2-luks | True      |
+| df91644b-783b-40df-96a6-f8746b064f7a | high-speed-luks      | True      |
+| 0caf91e8-2a40-49cd-b032-5a0afbfbadfc | classic-luks         | True      |
+| 75ebbfea-4c3b-4e55-95ec-7c85bacf740c | high-speed-gen2      | True      |
+| 15ed8b47-8835-4f2b-a860-0edb44376916 | high-speed           | True      |
+| 78b463ba-c44a-4fc5-b2c4-35b910445a69 | classic              | True      |
++--------------------------------------+----------------------+-----------+

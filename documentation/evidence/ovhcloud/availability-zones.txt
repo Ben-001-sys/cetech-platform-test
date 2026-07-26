@@ -1,0 +1,8 @@
++-----------+-------------+
+| Zone Name | Zone Status |
++-----------+-------------+
+| nova      | available   |
+| nova      | available   |
+| nova      | available   |
+| nova      | available   |
++-----------+-------------+

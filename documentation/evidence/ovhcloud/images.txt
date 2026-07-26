@@ -1,0 +1,58 @@
++--------------------------------------+-----------------------------------------------+--------+
+| ID                                   | Name                                          | Status |
++--------------------------------------+-----------------------------------------------+--------+
+| 310fab89-783a-46a0-8ecf-2bba94e45e23 | AlmaLinux 10                                  | active |
+| 701d999d-f735-446a-8c7c-f884d0cb3cd3 | AlmaLinux 10 - UEFI                           | active |
+| eb323b4c-97b5-4296-bfa8-0714a9bf1bd7 | AlmaLinux 8                                   | active |
+| bdc3069c-e153-405c-8b97-3e27e32e6867 | AlmaLinux 8 - UEFI                            | active |
+| 82b2611e-8109-4cd3-87fe-aca35f12c63b | AlmaLinux 8 - cPanel                          | active |
+| a0ee3c2f-ce47-43d3-a44b-785a911e1529 | AlmaLinux 9                                   | active |
+| b5989354-06ee-4129-9058-4b8b3df54cdf | AlmaLinux 9 - UEFI                            | active |
+| 93618ef5-3e9b-4a8a-af81-3e71d5d27796 | AlmaLinux 9 - cPanel                          | active |
+| 5c1d62c2-b597-4bd7-954a-14223faf0700 | Baremetal - Debian 11                         | active |
+| 34878702-3338-4b18-902b-b70c7efd8a7d | Baremetal - Debian 12                         | active |
+| 1a0f21bd-7439-450e-adec-bd47dafb2a27 | Baremetal - Debian 13                         | active |
+| 9bd675c2-c464-40b6-a45b-3d3fbef1d3d1 | Baremetal - Ubuntu 22.04                      | active |
+| 6f264c96-c4d2-43ce-bf6d-0c0de8c1ec36 | Baremetal - Ubuntu 24.04                      | active |
+| c08bf7df-7ae2-4916-aaf6-d6566f6f8047 | Baremetal - Ubuntu 26.04                      | active |
+| 267745f6-73ac-4e6a-bc82-7ede933d0dc2 | CloudLinux 8                                  | active |
+| 4b3ba379-9491-4680-97a7-b718656b4a1a | CloudLinux 9                                  | active |
+| 89618cc9-aa8c-4d65-902d-6ace16b506de | Debian 11                                     | active |
+| f8cfb8dc-bd61-4f1f-8d3c-e9c3a156da41 | Debian 11 - UEFI                              | active |
+| 313987fb-3e9e-4597-9e45-d3f8fbacb89f | Debian 12                                     | active |
+| 7777a32a-9637-46a1-8fa6-452f951c7711 | Debian 12 - Docker                            | active |
+| 03b046ed-acf3-4aeb-99ba-c5e9a36dba5b | Debian 12 - Plesk                             | active |
+| 4a0984c7-2898-4f29-a2d8-2f4aaebe8e99 | Debian 12 - UEFI                              | active |
+| 9969a6b2-1fc7-4a16-a36e-a708a0cbb017 | Debian 12 - n8n                               | active |
+| f9015d2d-4bfa-4e32-95f8-30b3202c6ca3 | Debian 13                                     | active |
+| 354f0c85-c99f-4c30-9f64-615a129a58e5 | Debian 13 - UEFI                              | active |
+| a30e258e-dde2-4b47-b491-e2d848a34cb5 | Fedora 43                                     | active |
+| 93bce582-c431-4930-8557-ea40ad436811 | Fedora 43 - UEFI                              | active |
+| 102aa258-ef14-44f4-ae9f-fdfa15a7b6d9 | Fedora 44                                     | active |
+| 4ba276f6-a635-4c75-b475-53ba00e13180 | Fedora 44 - UEFI                              | active |
+| 168cc72f-d377-42d9-a67e-176c754013f1 | FreeBSD-14.3 - UEFI                           | active |
+| 5632b43f-aff8-4f1b-a398-3c2e32867771 | FreeBSD-15-ufs - UEFI                         | active |
+| 41b3ed7f-b455-4cbb-989e-eecc551142fa | FreeBSD-15-zfs - UEFI                         | active |
+| 7ea81e0c-9299-4200-a2c8-4cff55bebac8 | NVIDIA GPU Cloud (NGC)                        | active |
+| aa152319-04ca-444a-989e-5246c64c50ba | Rocky Linux 10                                | active |
+| 7040ef09-6c34-4528-8945-301a15c010f6 | Rocky Linux 10 - UEFI                         | active |
+| f1051328-7a88-4912-bfc5-559a8221dd9b | Rocky Linux 8                                 | active |
+| 0c9b3683-9382-4f35-9048-5d952ec1ddfd | Rocky Linux 9                                 | active |
+| 819aecfa-f89c-4023-b289-ecd1655bf558 | Ubuntu 22.04                                  | active |
+| 88acff47-d031-495c-890c-ae55ba13273a | Ubuntu 22.04 - UEFI                           | active |
+| 8ae750c7-e79b-4865-9e44-587589ea8153 | Ubuntu 24.04                                  | active |
+| fc547622-72ed-4737-b618-f81532e65569 | Ubuntu 24.04 - NVIDIA - v580                  | active |
+| b5ddeec5-3a89-4333-8dd0-b85c19741757 | Ubuntu 24.04 - UEFI                           | active |
+| 253bafa4-3da7-41b2-81ed-8a34269a9dcd | Ubuntu 26.04                                  | active |
+| 9bb0f3d5-cd1f-4e69-a810-7dc021a9a323 | Ubuntu 26.04 - NVIDIA - v595                  | active |
+| d7ff01c1-1d56-4887-bdcb-be03358aec76 | Ubuntu 26.04 - UEFI                           | active |
+| 89b02209-ad46-4926-b170-3dfb07f0159a | Windows Server 2016 Standard (Desktop)        | active |
+| 20931e6c-3751-4135-a962-9fe267913b4c | Windows Server 2016 Standard (Desktop) - UEFI | active |
+| 3a3b0e73-05cb-40ce-b8c7-8ac2f5bd9448 | Windows Server 2019 Standard (Desktop)        | active |
+| 5538b81d-d92d-43f6-8d2a-f8bd42c8b21d | Windows Server 2019 Standard (Desktop) - UEFI | active |
+| 2e3db8f1-708d-4d94-b8e7-d9556f010a2e | Windows Server 2022 Standard (Desktop)        | active |
+| 7892e5f0-9a58-4f18-a4b0-9a22177e6b15 | Windows Server 2022 Standard (Desktop) - UEFI | active |
+| 483aea1b-47eb-4f97-8ee4-669b1708caf5 | Windows Server 2025 Standard (Desktop)        | active |
+| f16e56e5-1586-4ee9-a23f-353d5f82d0e7 | Windows Server 2025 Standard (Desktop) - UEFI | active |
+| d9fc124f-a956-48e1-b468-7979cb3dcede | rescue-ovh                                    | active |
++--------------------------------------+-----------------------------------------------+--------+

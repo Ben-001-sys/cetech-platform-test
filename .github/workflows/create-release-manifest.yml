@@ -37,6 +37,10 @@ jobs:
             "release-cetech-corporate-php-${{ github.event.workflow_run.head_sha }}"
             "release-cetech-store-gh-php-${{ github.event.workflow_run.head_sha }}"
             "release-cetech-blog-en-php-${{ github.event.workflow_run.head_sha }}"
+            "release-cetech-corporate-nginx-${{ github.event.workflow_run.head_sha }}"
+            "release-cetech-store-gh-nginx-${{ github.event.workflow_run.head_sha }}"
+            "release-cetech-blog-en-nginx-${{ github.event.workflow_run.head_sha }}"
+            "release-cetech-front-door-nginx-${{ github.event.workflow_run.head_sha }}"
           )
 
           for artifact in "${artifacts[@]}"; do
@@ -59,14 +63,14 @@ jobs:
               | sort -z
           )
 
-          if [[ ${#release_records[@]} -ne 3 ]]; then
-            echo "Expected 3 release records, found ${#release_records[@]}." >&2
+          if [[ ${#release_records[@]} -ne 7 ]]; then
+            echo "Expected 7 release records, found ${#release_records[@]}." >&2
             exit 1
           fi
 
           jq -s '.' "${release_records[@]}" > release-manifest.json
 
-          jq -e 'length == 3' release-manifest.json
+          jq -e 'length == 7' release-manifest.json
 
       - name: Upload manifest
         uses: actions/upload-artifact@v5

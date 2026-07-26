@@ -141,6 +141,8 @@ services:
         WP_CLI_IMAGE: ${WP_CLI_IMAGE}
         WORDPRESS_VERSION: ${WORDPRESS_VERSION}
         PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        PHP_PROFILE: local
+        APP_PREFIX: ""
         APP_DIR: apps/corporate
         APP_SLUG: corporate
         INSTALL_DEV_TOOLS: "1"
@@ -222,6 +224,8 @@ services:
         WP_CLI_IMAGE: ${WP_CLI_IMAGE}
         WORDPRESS_VERSION: ${WORDPRESS_VERSION}
         PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        PHP_PROFILE: local
+        APP_PREFIX: ""
         APP_DIR: apps/corporate
         APP_SLUG: corporate
         INSTALL_DEV_TOOLS: "1"
@@ -352,6 +356,8 @@ services:
         WP_CLI_IMAGE: ${WP_CLI_IMAGE}
         WORDPRESS_VERSION: ${WORDPRESS_VERSION}
         PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        PHP_PROFILE: local
+        APP_PREFIX: "/gh"
         APP_DIR: apps/store-gh
         APP_SLUG: store-gh
         INSTALL_DEV_TOOLS: "1"
@@ -400,6 +406,8 @@ services:
         WP_CLI_IMAGE: ${WP_CLI_IMAGE}
         WORDPRESS_VERSION: ${WORDPRESS_VERSION}
         PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        PHP_PROFILE: local
+        APP_PREFIX: "/en"
         APP_DIR: apps/blog-en
         APP_SLUG: blog-en
         INSTALL_DEV_TOOLS: "1"
@@ -482,6 +490,8 @@ services:
         WP_CLI_IMAGE: ${WP_CLI_IMAGE}
         WORDPRESS_VERSION: ${WORDPRESS_VERSION}
         PHPREDIS_VERSION: ${PHPREDIS_VERSION}
+        PHP_PROFILE: local
+        APP_PREFIX: "/en"
         APP_DIR: apps/blog-en
         APP_SLUG: blog-en
         INSTALL_DEV_TOOLS: "1"
