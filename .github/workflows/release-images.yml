@@ -25,7 +25,7 @@ env:
   PHPREDIS_VERSION: 6.3.0
 
 jobs:
-  build-and-push:
+  build-php:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -35,13 +35,28 @@ jobs:
         include:
           - site: corporate
             app_dir: apps/corporate
+            app_prefix: ""
             image: cetech-corporate-php
+            fpm_max_children: 24
+            fpm_start_servers: 6
+            fpm_min_spare_servers: 4
+            fpm_max_spare_servers: 10
           - site: store-gh
             app_dir: apps/store-gh
+            app_prefix: /gh
             image: cetech-store-gh-php
+            fpm_max_children: 64
+            fpm_start_servers: 16
+            fpm_min_spare_servers: 8
+            fpm_max_spare_servers: 24
           - site: blog-en
             app_dir: apps/blog-en
+            app_prefix: /en
             image: cetech-blog-en-php
+            fpm_max_children: 24
+            fpm_start_servers: 6
+            fpm_min_spare_servers: 4
+            fpm_max_spare_servers: 10
 
     steps:
       - name: Check out repository
@@ -54,8 +69,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          echo "value=${GITHUB_REPOSITORY_OWNER,,}" \
-            >> "${GITHUB_OUTPUT}"
+          echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "${GITHUB_OUTPUT}"
 
       - name: Log in to GHCR
         uses: docker/login-action@v4.4.0
@@ -112,7 +126,199 @@ jobs:
             PHPREDIS_VERSION=${{ env.PHPREDIS_VERSION }}
             APP_DIR=${{ matrix.app_dir }}
             APP_SLUG=${{ matrix.site }}
+            APP_PREFIX=${{ matrix.app_prefix }}
+            PHP_PROFILE=production
+            FPM_MAX_CHILDREN=${{ matrix.fpm_max_children }}
+            FPM_START_SERVERS=${{ matrix.fpm_start_servers }}
+            FPM_MIN_SPARE_SERVERS=${{ matrix.fpm_min_spare_servers }}
+            FPM_MAX_SPARE_SERVERS=${{ matrix.fpm_max_spare_servers }}
             INSTALL_DEV_TOOLS=0
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Verify WordPress checksums
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          docker run --rm \
+            --entrypoint wp \
+            "ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}" \
+            core verify-checksums \
+            --path=/usr/src/wordpress \
+            --version="${{ env.WORDPRESS_VERSION }}"
+
+      - name: Verify Query Monitor is absent
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if docker run --rm \
+            --entrypoint test \
+            "ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}" \
+            -d /opt/cetech/wp-content/plugins/query-monitor
+          then
+            echo "Query Monitor exists in production image."
+            exit 1
+          fi
+
+      - name: Scan pushed immutable digest
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Write release record
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          mkdir -p release-records
+
+          cat > "release-records/${{ matrix.image }}.json" <<EOF
+          {
+            "repository": "${GITHUB_REPOSITORY}",
+            "commit": "${GITHUB_SHA}",
+            "ref": "${GITHUB_REF}",
+            "image": "ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image }}",
+            "digest": "${{ steps.build.outputs.digest }}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Upload release record
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-${{ matrix.image }}-${{ github.sha }}
+          path: release-records/${{ matrix.image }}.json
+          if-no-files-found: error
+          retention-days: 90
+
+  build-nginx:
+    needs: build-php
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - site: corporate
+            image: cetech-corporate-nginx
+            dockerfile: docker/nginx/Dockerfile.site
+            site_config: corporate
+            php_image: cetech-corporate-php
+          - site: store-gh
+            image: cetech-store-gh-nginx
+            dockerfile: docker/nginx/Dockerfile.site
+            site_config: store-gh
+            php_image: cetech-store-gh-php
+          - site: blog-en
+            image: cetech-blog-en-nginx
+            dockerfile: docker/nginx/Dockerfile.site
+            site_config: blog-en
+            php_image: cetech-blog-en-php
+          - site: front-door
+            image: cetech-front-door-nginx
+            dockerfile: docker/nginx/Dockerfile.front-door
+            site_config: front-door
+            php_image: ""
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set lowercase owner
+        id: owner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Download PHP release records
+        uses: actions/download-artifact@v5
+        with:
+          path: downloaded-release-records
+
+      - name: Determine tags
+        id: tags
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          repository="ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image }}"
+          sha_tag="${repository}:sha-${GITHUB_SHA}"
+
+          {
+            echo "list<<EOF"
+            echo "${sha_tag}"
+
+            if [[ "${GITHUB_REF}" == "refs/heads/staging" ]]; then
+              echo "${repository}:staging"
+            fi
+
+            if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+              echo "${repository}:production-candidate"
+            fi
+
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              echo "${repository}:${GITHUB_REF_NAME}"
+            fi
+
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Load PHP release digest
+        id: release-data
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ "${{ matrix.site }}" == "front-door" ]]; then
+            echo "PHP_RELEASE_IMAGE=" >> "${GITHUB_OUTPUT}"
+          else
+            digest_file="downloaded-release-records/release-${{ matrix.php_image }}.json"
+            digest="$(jq -r '.digest' "${digest_file}")"
+            if [[ -z "${digest}" ]]; then
+              echo "Missing or empty digest from ${digest_file}" >&2
+              exit 1
+            fi
+
+            echo "PHP_RELEASE_IMAGE=ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.php_image }}@${digest}" >> "${GITHUB_OUTPUT}"
+          fi
+
+          echo "SITE_CONFIG=${{ matrix.site }}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push immutable image
+        id: build
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          pull: true
+          platforms: linux/amd64
+          tags: ${{ steps.tags.outputs.list }}
+          build-args: |
+            PHP_RELEASE_IMAGE=${{ steps.release-data.outputs.PHP_RELEASE_IMAGE }}
+            SITE_CONFIG=${{ steps.release-data.outputs.SITE_CONFIG }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=${{ matrix.image }}
@@ -152,3 +358,39 @@ jobs:
           path: release-records/${{ matrix.image }}.json
           if-no-files-found: error
           retention-days: 90
+
+  validate-nginx-config:
+    needs: build-nginx
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate front-door nginx configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          docker run --rm \
+            --volume "${PWD}/docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            --volume "${PWD}/docker/nginx/front-door/production.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:1.30.4 \
+            nginx -t
+
+      - name: Validate site nginx configurations
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          for site in corporate store-gh blog-en; do
+            docker run --rm \
+              --volume "${PWD}/docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+              --volume "${PWD}/docker/nginx/${site}/production.conf:/etc/nginx/conf.d/default.conf:ro" \
+              --volume "${PWD}/docker/nginx/common:/etc/nginx/snippets:ro" \
+              nginx:1.30.4 \
+              nginx -t
+          done
