@@ -1,0 +1,415 @@
+name: cetech-production-${NODE_ID}
+
+x-logging: &logging
+  driver: local
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-security: &security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-php-common: &php-common
+  pull_policy: always
+  restart: unless-stopped
+  init: true
+  read_only: true
+  user: "33:33"
+  stop_signal: SIGQUIT
+  stop_grace_period: 60s
+  tmpfs:
+    - /tmp:size=128m,mode=1777,uid=33,gid=33
+    - /var/tmp:size=64m,mode=1777,uid=33,gid=33
+    - /var/run/php:size=16m,mode=0755,uid=33,gid=33
+  extra_hosts:
+    - "db-01.prod.cetech.internal:10.40.30.10"
+    - "cache-01.prod.cetech.internal:10.40.40.10"
+  logging: *logging
+  <<: *security
+
+x-nginx-common: &nginx-common
+  pull_policy: always
+  restart: unless-stopped
+  init: true
+  read_only: true
+  user: "101:101"
+  stop_signal: SIGQUIT
+  stop_grace_period: 30s
+  tmpfs:
+    - /tmp:size=64m,mode=1777,uid=101,gid=101
+  logging: *logging
+  <<: *security
+
+services:
+  front-door:
+    <<: *nginx-common
+    image: >-
+      ghcr.io/${GHCR_ORG}/cetech-front-door-nginx:
+      sha-${RELEASE_SHA}
+    expose:
+      - "8080"
+    depends_on:
+      corporate-nginx:
+        condition: service_healthy
+      store-nginx:
+        condition: service_healthy
+      blog-nginx:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+      - corporate
+      - store
+      - blog
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+
+      - >-
+        traefik.http.routers.cetech-${NODE_ID}-http.rule=
+        Host(`ben.realjanelove.com`) || Host(`www.ben.realjanelove.com`)
+      - >-
+        traefik.http.routers.cetech-${NODE_ID}-http.entrypoints=web
+      - >-
+        traefik.http.routers.cetech-${NODE_ID}-http.middlewares=
+        cetech-${NODE_ID}-https-redirect
+      - >-
+        traefik.http.middlewares.cetech-${NODE_ID}-https-redirect.
+        redirectscheme.scheme=https
+      - >-
+        traefik.http.middlewares.cetech-${NODE_ID}-https-redirect.
+        redirectscheme.permanent=true
+
+      - >-
+        traefik.http.routers.cetech-${NODE_ID}-https.rule=
+        Host(`ben.realjanelove.com`) || Host(`www.ben.realjanelove.com`)
+      - >-
+        traefik.http.routers.cetech-${NODE_ID}-https.
+        entrypoints=websecure
+      - >-
+        traefik.http.routers.cetech-${NODE_ID}-https.tls=true
+      - >-
+        traefik.http.routers.cetech-${NODE_ID}-https.service=
+        cetech-${NODE_ID}-front-door
+
+      - >-
+        traefik.http.services.cetech-${NODE_ID}-front-door.
+        loadbalancer.server.port=8080
+      - >-
+        traefik.http.services.cetech-${NODE_ID}-front-door.
+        loadbalancer.passhostheader=true
+      - >-
+        traefik.http.services.cetech-${NODE_ID}-front-door.
+        loadbalancer.healthcheck.path=/__health/live
+      - >-
+        traefik.http.services.cetech-${NODE_ID}-front-door.
+        loadbalancer.healthcheck.interval=10s
+      - >-
+        traefik.http.services.cetech-${NODE_ID}-front-door.
+        loadbalancer.healthcheck.timeout=3s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 128M
+          pids: 64
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+
+  corporate-nginx:
+    <<: *nginx-common
+    image: >-
+      ghcr.io/${GHCR_ORG}/cetech-corporate-nginx:
+      sha-${RELEASE_SHA}
+    expose:
+      - "8080"
+    depends_on:
+      corporate-php:
+        condition: service_healthy
+    volumes:
+      - >-
+        /srv/cetech/runtime/corporate/uploads:
+        /opt/cetech/release/wp-content/uploads:ro
+    networks:
+      - corporate
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 64M
+          pids: 64
+        reservations:
+          cpus: "0.02"
+          memory: 16M
+
+  corporate-php:
+    <<: *php-common
+    image: >-
+      ghcr.io/${GHCR_ORG}/cetech-corporate-php:
+      sha-${RELEASE_SHA}
+    environment:
+      CETECH_IMMUTABLE_RELEASE: "1"
+      CETECH_SITE_ID: corporate
+      CETECH_ENABLE_XMLRPC: "false"
+
+      WP_ROOT: /opt/cetech/release
+
+      WORDPRESS_DB_HOST: db-01.prod.cetech.internal:3306
+      WORDPRESS_DB_NAME: ${CORPORATE_DB_NAME}
+      WORDPRESS_DB_USER: ${CORPORATE_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${CORPORATE_DB_PASSWORD}
+      WORDPRESS_DB_SSL: ${WORDPRESS_DB_SSL:-false}
+      WORDPRESS_TABLE_PREFIX: corp_
+
+      WORDPRESS_HOME: https://ben.realjanelove.com
+      WORDPRESS_SITEURL: https://ben.realjanelove.com
+      WORDPRESS_COOKIE_PATH: /
+      WORDPRESS_SITE_COOKIE_PATH: /
+
+      WORDPRESS_ENVIRONMENT_TYPE: production
+      WORDPRESS_DEBUG: "false"
+      WORDPRESS_DEBUG_DISPLAY: "false"
+      WORDPRESS_DEBUG_LOG: "true"
+      WORDPRESS_SCRIPT_DEBUG: "false"
+      WORDPRESS_DISALLOW_FILE_MODS: "true"
+      WORDPRESS_DISABLE_AUTO_UPDATES: "true"
+      WORDPRESS_AUTO_UPDATE_CORE: "false"
+      WORDPRESS_MEMORY_LIMIT: 128M
+      WORDPRESS_MAX_MEMORY_LIMIT: 256M
+
+      WORDPRESS_VALKEY_HOST: cache-01.prod.cetech.internal
+      WORDPRESS_VALKEY_PORT: "6379"
+      WORDPRESS_VALKEY_SCHEME: tcp
+      WORDPRESS_VALKEY_DATABASE: "0"
+      WORDPRESS_VALKEY_USERNAME: ${CORPORATE_VALKEY_USERNAME}
+      WORDPRESS_VALKEY_PASSWORD: ${CORPORATE_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:production:corporate:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:production:corporate:"
+
+      WORDPRESS_AUTH_KEY: ${CORPORATE_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${CORPORATE_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${CORPORATE_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${CORPORATE_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${CORPORATE_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${CORPORATE_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${CORPORATE_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${CORPORATE_NONCE_SALT}
+    volumes:
+      - >-
+        /srv/cetech/runtime/corporate/uploads:
+        /opt/cetech/release/wp-content/uploads
+    networks:
+      - corporate
+    deploy:
+      resources:
+        limits:
+          cpus: "0.60"
+          memory: 320M
+          pids: 128
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+
+  store-nginx:
+    <<: *nginx-common
+    image: >-
+      ghcr.io/${GHCR_ORG}/cetech-store-gh-nginx:
+      sha-${RELEASE_SHA}
+    expose:
+      - "8080"
+    depends_on:
+      store-php:
+        condition: service_healthy
+    volumes:
+      - >-
+        /srv/cetech/runtime/store-gh/uploads:
+        /opt/cetech/release/gh/wp-content/uploads:ro
+    networks:
+      - store
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 64M
+          pids: 64
+        reservations:
+          cpus: "0.02"
+          memory: 16M
+
+  store-php:
+    <<: *php-common
+    image: >-
+      ghcr.io/${GHCR_ORG}/cetech-store-gh-php:
+      sha-${RELEASE_SHA}
+    environment:
+      CETECH_IMMUTABLE_RELEASE: "1"
+      CETECH_SITE_ID: store-gh
+      CETECH_ENABLE_XMLRPC: "false"
+
+      WP_ROOT: /opt/cetech/release/gh
+
+      WORDPRESS_DB_HOST: db-01.prod.cetech.internal:3306
+      WORDPRESS_DB_NAME: ${STORE_DB_NAME}
+      WORDPRESS_DB_USER: ${STORE_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${STORE_DB_PASSWORD}
+      WORDPRESS_DB_SSL: ${WORDPRESS_DB_SSL:-false}
+      WORDPRESS_TABLE_PREFIX: gh_
+
+      WORDPRESS_HOME: https://ben.realjanelove.com/gh
+      WORDPRESS_SITEURL: https://ben.realjanelove.com/gh
+      WORDPRESS_COOKIE_PATH: /gh/
+      WORDPRESS_SITE_COOKIE_PATH: /gh/
+
+      WORDPRESS_ENVIRONMENT_TYPE: production
+      WORDPRESS_DEBUG: "false"
+      WORDPRESS_DEBUG_DISPLAY: "false"
+      WORDPRESS_DEBUG_LOG: "true"
+      WORDPRESS_SCRIPT_DEBUG: "false"
+      WORDPRESS_DISALLOW_FILE_MODS: "true"
+      WORDPRESS_DISABLE_AUTO_UPDATES: "true"
+      WORDPRESS_AUTO_UPDATE_CORE: "false"
+      WORDPRESS_MEMORY_LIMIT: 256M
+      WORDPRESS_MAX_MEMORY_LIMIT: 384M
+
+      WORDPRESS_VALKEY_HOST: cache-01.prod.cetech.internal
+      WORDPRESS_VALKEY_PORT: "6380"
+      WORDPRESS_VALKEY_SCHEME: tcp
+      WORDPRESS_VALKEY_DATABASE: "0"
+      WORDPRESS_VALKEY_USERNAME: ${STORE_VALKEY_USERNAME}
+      WORDPRESS_VALKEY_PASSWORD: ${STORE_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:production:store-gh:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:production:store-gh:"
+
+      WORDPRESS_AUTH_KEY: ${STORE_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${STORE_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${STORE_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${STORE_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${STORE_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${STORE_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${STORE_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${STORE_NONCE_SALT}
+    volumes:
+      - >-
+        /srv/cetech/runtime/store-gh/uploads:
+        /opt/cetech/release/gh/wp-content/uploads
+    networks:
+      - store
+    deploy:
+      resources:
+        limits:
+          cpus: "0.70"
+          memory: 384M
+          pids: 160
+        reservations:
+          cpus: "0.15"
+          memory: 160M
+
+  blog-nginx:
+    <<: *nginx-common
+    image: >-
+      ghcr.io/${GHCR_ORG}/cetech-blog-en-nginx:
+      sha-${RELEASE_SHA}
+    expose:
+      - "8080"
+    depends_on:
+      blog-php:
+        condition: service_healthy
+    volumes:
+      - >-
+        /srv/cetech/runtime/blog-en/uploads:
+        /opt/cetech/release/en/wp-content/uploads:ro
+    networks:
+      - blog
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 64M
+          pids: 64
+        reservations:
+          cpus: "0.02"
+          memory: 16M
+
+  blog-php:
+    <<: *php-common
+    image: >-
+      ghcr.io/${GHCR_ORG}/cetech-blog-en-php:
+      sha-${RELEASE_SHA}
+    environment:
+      CETECH_IMMUTABLE_RELEASE: "1"
+      CETECH_SITE_ID: blog-en
+      CETECH_ENABLE_XMLRPC: "false"
+
+      WP_ROOT: /opt/cetech/release/en
+
+      WORDPRESS_DB_HOST: db-01.prod.cetech.internal:3306
+      WORDPRESS_DB_NAME: ${BLOG_DB_NAME}
+      WORDPRESS_DB_USER: ${BLOG_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${BLOG_DB_PASSWORD}
+      WORDPRESS_DB_SSL: ${WORDPRESS_DB_SSL:-false}
+      WORDPRESS_TABLE_PREFIX: en_
+
+      WORDPRESS_HOME: https://ben.realjanelove.com/en
+      WORDPRESS_SITEURL: https://ben.realjanelove.com/en
+      WORDPRESS_COOKIE_PATH: /en/
+      WORDPRESS_SITE_COOKIE_PATH: /en/
+
+      WORDPRESS_ENVIRONMENT_TYPE: production
+      WORDPRESS_DEBUG: "false"
+      WORDPRESS_DEBUG_DISPLAY: "false"
+      WORDPRESS_DEBUG_LOG: "true"
+      WORDPRESS_SCRIPT_DEBUG: "false"
+      WORDPRESS_DISALLOW_FILE_MODS: "true"
+      WORDPRESS_DISABLE_AUTO_UPDATES: "true"
+      WORDPRESS_AUTO_UPDATE_CORE: "false"
+      WORDPRESS_MEMORY_LIMIT: 128M
+      WORDPRESS_MAX_MEMORY_LIMIT: 256M
+
+      WORDPRESS_VALKEY_HOST: cache-01.prod.cetech.internal
+      WORDPRESS_VALKEY_PORT: "6381"
+      WORDPRESS_VALKEY_SCHEME: tcp
+      WORDPRESS_VALKEY_DATABASE: "0"
+      WORDPRESS_VALKEY_USERNAME: ${BLOG_VALKEY_USERNAME}
+      WORDPRESS_VALKEY_PASSWORD: ${BLOG_VALKEY_PASSWORD}
+      WORDPRESS_VALKEY_PREFIX: "cetech:production:blog-en:"
+      WORDPRESS_CACHE_KEY_SALT: "cetech:production:blog-en:"
+
+      WORDPRESS_AUTH_KEY: ${BLOG_AUTH_KEY}
+      WORDPRESS_SECURE_AUTH_KEY: ${BLOG_SECURE_AUTH_KEY}
+      WORDPRESS_LOGGED_IN_KEY: ${BLOG_LOGGED_IN_KEY}
+      WORDPRESS_NONCE_KEY: ${BLOG_NONCE_KEY}
+      WORDPRESS_AUTH_SALT: ${BLOG_AUTH_SALT}
+      WORDPRESS_SECURE_AUTH_SALT: ${BLOG_SECURE_AUTH_SALT}
+      WORDPRESS_LOGGED_IN_SALT: ${BLOG_LOGGED_IN_SALT}
+      WORDPRESS_NONCE_SALT: ${BLOG_NONCE_SALT}
+    volumes:
+      - >-
+        /srv/cetech/runtime/blog-en/uploads:
+        /opt/cetech/release/en/wp-content/uploads
+    networks:
+      - blog
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+          pids: 128
+        reservations:
+          cpus: "0.08"
+          memory: 96M
+
+networks:
+  dokploy-network:
+    external: true
+
+  corporate:
+    name: cetech-${NODE_ID}-corporate
+
+  store:
+    name: cetech-${NODE_ID}-store
+
+  blog:
+    name: cetech-${NODE_ID}-blog

@@ -257,10 +257,45 @@ define(
 	(int) cetech_env( 'WORDPRESS_VALKEY_PORT', '6379' )
 );
 
-define(
-	'WP_REDIS_PASSWORD',
-	cetech_env_required( 'WORDPRESS_VALKEY_PASSWORD' )
+
+
+$valkey_username = cetech_env(
+	'WORDPRESS_VALKEY_USERNAME',
+	''
 );
+
+$valkey_password = cetech_env(
+	'WORDPRESS_VALKEY_PASSWORD'
+);
+
+if ($valkey_username !== '') {
+	define(
+		'WP_REDIS_PASSWORD',
+		array(
+			$valkey_username,
+			$valkey_password,
+		)
+	);
+} else {
+	define(
+		'WP_REDIS_PASSWORD',
+		$valkey_password
+	);
+}
+
+define(
+	'WP_REDIS_SCHEME',
+	cetech_env('WORDPRESS_VALKEY_SCHEME', 'tcp')
+);
+
+define(
+	'WP_REDIS_DATABASE',
+	(int) cetech_env('WORDPRESS_VALKEY_DATABASE', '0')
+);
+
+define('WP_REDIS_DISABLE_DROPIN_AUTOUPDATE', true);
+define('WP_REDIS_DISABLE_BANNERS', true);
+define('WP_REDIS_DISABLE_COMMENT', true);
 
 define(
 	'WP_REDIS_PREFIX',

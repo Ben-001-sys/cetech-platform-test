@@ -1,0 +1,54 @@
+#cloud-config
+
+hostname: __HOSTNAME__
+manage_etc_hosts: true
+timezone: UTC
+
+users:
+  - default
+  - name: cetechops
+    gecos: CETECH Operations
+    groups:
+      - adm
+      - sudo
+    sudo:
+      - ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - __SSH_PUBLIC_KEY__
+
+disable_root: false
+ssh_pwauth: false
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - ca-certificates
+  - curl
+  - jq
+  - rsync
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/sudoers.d/90-cetechops
+    owner: root:root
+    permissions: "0440"
+    content: |
+      cetechops ALL=(ALL) NOPASSWD:ALL
+
+  - path: /etc/motd
+    owner: root:root
+    permissions: "0644"
+    content: |
+      CETECH production infrastructure.
+      Authorised administrative access only.
+      All actions may be logged and audited.
+
+runcmd:
+  - systemctl enable --now unattended-upgrades
+  - install -d -m 0750 -o root -g adm /var/log/cetech
+  - touch /var/log/cetech/provisioned
+  - chmod 0640 /var/log/cetech/provisioned
+  - date -u --iso-8601=seconds > /var/log/cetech/provisioned
