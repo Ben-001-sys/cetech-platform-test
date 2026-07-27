@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Check out exact commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
@@ -73,7 +73,7 @@ jobs:
           jq -e 'length == 7' release-manifest.json
 
       - name: Upload manifest
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: cetech-release-manifest-${{ github.event.workflow_run.head_sha }}
           path: release-manifest.json
