@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   packages: write
 
@@ -253,9 +254,35 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Download PHP release records
-        uses: actions/download-artifact@v5
-        with:
-          path: downloaded-release-records
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          mkdir -p downloaded-release-records
+
+          artifact_name="release-${{ matrix.php_image }}-${{ github.sha }}"
+
+          echo "Downloading artifact: ${artifact_name}"
+
+          for attempt in 1 2 3 4 5; do
+            if gh run download "${RUN_ID}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --dir downloaded-release-records \
+              --name "${artifact_name}"; then
+              break
+            fi
+
+            if [[ "${attempt}" -eq 5 ]]; then
+              echo "Failed to download artifact ${artifact_name}" >&2
+              exit 1
+            fi
+
+            echo "Transient artifact download failure, retrying in 10 seconds..."
+            sleep 10
+          done
 
       - name: Determine tags
         id: tags
@@ -294,7 +321,13 @@ jobs:
           if [[ "${{ matrix.site }}" == "front-door" ]]; then
             echo "PHP_RELEASE_IMAGE=" >> "${GITHUB_OUTPUT}"
           else
-            digest_file="downloaded-release-records/release-${{ matrix.php_image }}.json"
+            digest_file="$(find downloaded-release-records -type f -name '*.json' | head -n 1)"
+
+            if [[ -z "${digest_file}" ]]; then
+              echo "No release record JSON file found in downloaded-release-records" >&2
+              exit 1
+            fi
+
             digest="$(jq -r '.digest' "${digest_file}")"
             if [[ -z "${digest}" ]]; then
               echo "Missing or empty digest from ${digest_file}" >&2
